@@ -3,6 +3,7 @@ import yt_dlp
 def fetch_video_info(url, selected_format):
     ydl_opts = {
         'format': 'bestaudio/best' if selected_format == 'mp3' else 'bestvideo+bestaudio/best',
+        'proxy': 'http://203.115.101.53:5000',
         'skip_download': True,  # Only extract info, don't download
     }
 
