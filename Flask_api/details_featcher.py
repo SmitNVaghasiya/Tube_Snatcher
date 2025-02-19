@@ -61,13 +61,11 @@ def fetch_video_info(url, selected_format):
         print(f"Error fetching video info: {str(e)}")
         return None, []
 
-# Example Usage
-video_url = "https://www.youtube.com/watch?v=VALID_VIDEO_ID"  # Replace with a real video URL
-selected_format = "mp4"  # Change to "mp3" for audio only
-info, formats = fetch_video_info(video_url, selected_format)
+# # Example Usage (REMOVE THIS)
+# video_url = "https://www.youtube.com/watch?v=VALID_VIDEO_ID"  # Replace with an actual video URL
+# selected_format = "mp4"
+# info, formats = fetch_video_info(video_url, selected_format)
 
-if info:
-    for fmt in formats:
-        print(f"{fmt['format_note']}, {fmt['resolution']}, {fmt['filesize']}")
-else:
-    print("Failed to retrieve video information.")
+# for fmt in formats:
+#     display_size = fmt['filesize'] if fmt['filesize'] else ""
+#     print(f"{fmt['format_note']}, {fmt['resolution']}, {display_size}")
