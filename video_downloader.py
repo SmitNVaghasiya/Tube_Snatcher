@@ -8,7 +8,7 @@ def download_video(url, format_id, directory):
     ydl_opts = {
         'format': format_id,
         # 'proxy': 'http://203.115.101.53:5000',
-        'cookiefile': 'cookies.txt',
+        # 'cookiefile': 'cookies.txt',
         'outtmpl': os.path.join(directory, '%(title)s.%(ext)s'),
     }
 
