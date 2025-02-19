@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_file, render_template
 import os
-from details_featcher import fetch_video_info
-from video_downloader import download_video
+from Flask_api.details_featcher import fetch_video_info
+from Flask_api.video_downloader import download_video
 
 app = Flask(__name__)
 
