@@ -1,17 +1,10 @@
 from flask import Flask, request, jsonify, send_file, render_template
 import os
-import sys
-
-# Ensure Python can find Flask_api modules
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-
-from Flask_api.details_featcher import fetch_video_info
-from Flask_api.video_downloader import download_video
+from details_featcher import fetch_video_info
+from video_downloader import download_video
 
 # Tell Flask where to find templates and static files
-app = Flask(__name__, 
-            template_folder="Flask_api/templates", 
-            static_folder="Flask_api/static")
+app = Flask(__name__)
 
 @app.route('/')
 def index():
@@ -63,9 +56,9 @@ def download_file(filename):
     return send_file(filepath, as_attachment=True, download_name=safe_filename)
 
 # This code is for Only Local Server
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+# if __name__ == '__main__':
+#     app.run(host='0.0.0.0', port=5000, debug=True)
 
 # This code is for render Deployment
-# if __name__ == '__main__':
-#     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))

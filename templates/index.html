@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Tube Snatcher</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+    <!-- Added jQuery script for using jQuery functions -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+
+<body>
+    <div class="container above-center">
+        <form id="downloadForm">
+            <div class="input-wrapper">
+                <input type="text" name="url" id="urlInput" placeholder="Paste Your URL..." required>
+                <button type="submit" class="button">Download</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Added this div to show the response from the server -->
+    <div class="container below-container" id="responseContainer"></div>
+
+    <script>
+        $(document).ready(function () {
+            // Event handler for form submission
+            $('#downloadForm').on('submit', function (event) {
+                event.preventDefault(); // Prevent the default form submission
+
+                var url = $('#urlInput').val(); // Get the URL from the input field
+                console.log(url); // Log the URL for debugging
+
+                $.ajax({
+                    type: 'GET', // Changed to GET to match the Flask route
+                    url: '/download',
+                    data: { url: url },
+                    dataType: 'json',
+                    success: function (response) {
+                        // Check if there's an error in the response
+                        if (response.error) {
+                            $('#responseContainer').html('Error: ' + response.error);
+                        } else {
+                            // Provide a download link if the video is successfully downloaded
+                            $('#responseContainer').html('Download started: <a href="/download_file/' + encodeURIComponent(response.filename) + '">Click here to download</a>');
+                        }
+                    },
+                    error: function () {
+                        // Handle any errors that occur during the AJAX request
+                        $('#responseContainer').html('An error occurred.');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>
