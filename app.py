@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return render_template('index2.html')
+    return render_template('Flask_api\templates\index2.html')
 
 @app.route('/fetch_details', methods=['POST'])
 def fetch_details():
