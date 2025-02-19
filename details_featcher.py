@@ -3,7 +3,6 @@ import yt_dlp
 def fetch_video_info(url, selected_format):
     ydl_opts = {
         'format': 'bestaudio/best' if selected_format == 'mp3' else 'bestvideo+bestaudio/best',
-        # 'proxy': 'http://203.115.101.53:5000',
         'cookiefile': 'cookies.txt',
         'skip_download': True,  # Only extract info, don't download
     }
@@ -12,7 +11,6 @@ def fetch_video_info(url, selected_format):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            # Ensure info is valid
             if not info:
                 print("Error: Could not fetch video details.")
                 return None, []
@@ -30,18 +28,19 @@ def fetch_video_info(url, selected_format):
                     continue  # Skip audio-only formats for mp4 mode
 
                 # Handle File Size Display
-                filesize_raw = fmt.get('filesize', 0)  # Get raw filesize or default to 0
-                if filesize_raw:
+                filesize_raw = fmt.get('filesize')  # Get raw filesize (can be None)
+                if filesize_raw is not None:
                     filesize_mb = round(filesize_raw / (1024 * 1024), 2)
                     filesize_str = f"{filesize_mb} MB" if filesize_mb < 1024 else f"{round(filesize_mb / 1024, 2)} GB"
                 else:
+                    filesize_mb = 0  # Default for sorting
                     filesize_str = "Unknown"
 
                 format_info = {
                     'format_id': fmt.get('format_id'),
                     'resolution': f"{fmt.get('width')}x{fmt.get('height')}" if fmt.get('width') and fmt.get('height') else 'Audio Only',
                     'filesize': filesize_str,
-                    'filesize_value': filesize_raw,
+                    'filesize_value': filesize_mb,  # Ensure sorting works
                     'format_note': fmt.get('format_note', 'N/A'),
                     'ext': ext
                 }
