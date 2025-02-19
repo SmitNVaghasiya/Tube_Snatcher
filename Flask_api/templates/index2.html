@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Tube Snacher</title>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  </head>
+
+  <body>
+    <!-- To add any message on the top of the screen -->
+    <h1>
+      <pre>Download Videos at HD resolution </pre>
+    </h1>
+    <div class="container above-center">
+      <form id="downloadForm">
+        <div class="input-wrapper">
+          <input
+            type="text"
+            name="url"
+            id="urlInput"
+            placeholder="Paste Your URL..."
+            required
+          />
+          <!-- Dropdown for selecting MP3 or MP4 -->
+          <select name="format" id="formatSelect" class="format-dropdown">
+            <option value="mp4">Video (MP4)</option>
+            <option value="mp3">Audio (MP3)</option>
+          </select>
+          <button type="submit" class="button">Download</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="loading-container">
+      <h2 id="loadingtext">Wait for details to be fetched</h2>
+      <div class="loading-circle" id="loadingCircle"></div>
+    </div>
+
+    <div class="container below-container hidden">
+      <div class="content">
+        <div class="content-card">
+          <div class="image picture-card">
+            <img src="" alt="Album Cover" id="videoThumbnail" />
+          </div>
+          <div class="description-card description" id="videoDescription"></div>
+        </div>
+        <div class="download-card options"></div>
+      </div>
+    </div>
+
+    <!-- <div id="responseContainer"></div> -->
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+  </body>
+</html>
