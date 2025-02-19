@@ -1,13 +1,21 @@
 from flask import Flask, request, jsonify, send_file, render_template
 import os
+import sys
+
+# Ensure Python can find Flask_api modules
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
 from Flask_api.details_featcher import fetch_video_info
 from Flask_api.video_downloader import download_video
 
-app = Flask(__name__)
+# Tell Flask where to find templates and static files
+app = Flask(__name__, 
+            template_folder="Flask_api/templates", 
+            static_folder="Flask_api/static")
 
 @app.route('/')
 def index():
-    return render_template('Flask_api\templates\index2.html')
+    return render_template('index2.html')  # Path is correct now
 
 @app.route('/fetch_details', methods=['POST'])
 def fetch_details():
@@ -35,7 +43,7 @@ def download():
     if not url or not format_id:
         return jsonify({'error': 'URL and format_id parameters are required'}), 400
 
-    directory = 'temp'
+    directory = 'Flask_api/temp'  # Update temp directory path
     filename, error, title, thumbnail = download_video(url, format_id, directory)
     
     if error:
@@ -45,7 +53,7 @@ def download():
 
 @app.route('/download_file/<filename>')
 def download_file(filename):
-    directory = 'temp'
+    directory = 'Flask_api/temp'  # Update temp directory path
     safe_filename = os.path.basename(filename)  # Prevent path traversal
     filepath = os.path.join(directory, safe_filename)
     
@@ -54,5 +62,10 @@ def download_file(filename):
 
     return send_file(filepath, as_attachment=True, download_name=safe_filename)
 
+# This code is for Only Local Server
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+# This code is for render Deployment
+# if __name__ == '__main__':
+#     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
