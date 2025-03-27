@@ -1,54 +1,71 @@
 import yt_dlp
-import asyncio
-import aiohttp
 from concurrent.futures import ThreadPoolExecutor
 
-async def fetch_video_info(url, selected_format):
+def fetch_video_info(url, selected_format):
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'noplaylist': False,
     }
 
-    # Semaphore to limit concurrent tasks to 5
-    semaphore = asyncio.Semaphore(5)
-
-    async def fetch_single_video_info(video_url, ydl_opts):
-        async with semaphore:  # Limit concurrent tasks
-            loop = asyncio.get_event_loop()
-            with ThreadPoolExecutor() as pool:
-                try:
-                    info = await loop.run_in_executor(pool, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(video_url, download=False))
-                    return info
-                except Exception as e:
-                    print(f"Error fetching info for {video_url}: {str(e)}")
-                    return None
+    def fetch_single_video_info(video_url, ydl_opts):
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_url, download=False)
+                print(f"Fetched info for {video_url}: {info.get('title', 'Untitled')}")
+                return info
+        except Exception as e:
+            print(f"Error fetching info for {video_url}: {str(e)}")
+            return None
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if 'entries' in info:  # Playlist detected
                 videos = []
-                tasks = []
-                for entry in info['entries']:
-                    video_url = entry.get('url', entry.get('webpage_url'))
-                    if video_url:
-                        tasks.append(fetch_single_video_info(video_url, ydl_opts))
-                video_infos = await asyncio.gather(*tasks)
-                for video_info in video_infos:
-                    if video_info:  # Only add if info was successfully fetched
-                        videos.append({
-                            'title': video_info.get('title', 'Untitled'),
-                            'url': video_info.get('webpage_url', video_info.get('url')),
-                            'thumbnail': video_info.get('thumbnail', ''),
-                            'duration': video_info.get('duration', 0)
-                        })
-                return {
+                batch_size = 5  # Process 5 videos at a time
+                entries = info['entries']
+
+                # Initial playlist metadata
+                result = {
                     'type': 'playlist',
                     'title': info.get('title', 'Playlist'),
                     'thumbnail': info.get('thumbnails', [{}])[-1].get('url', ''),
                     'videos': videos
                 }
+                print(f"Playlist detected: {result['title']} with {len(entries)} videos")
+
+                # Process videos in batches using ThreadPoolExecutor
+                with ThreadPoolExecutor() as executor:
+                    for i in range(0, len(entries), batch_size):
+                        batch = entries[i:i + batch_size]
+                        batch_urls = [entry.get('url', entry.get('webpage_url')) for entry in batch if entry.get('url', entry.get('webpage_url'))]
+                        video_infos = list(executor.map(lambda url: fetch_single_video_info(url, ydl_opts), batch_urls))
+                        for video_info in video_infos:
+                            if video_info:  # Only add if info was successfully fetched
+                                formats = []
+                                for fmt in video_info.get('formats', []):
+                                    if 'storyboard' in fmt.get('format_note', '').lower():  # Skip storyboard formats
+                                        continue
+                                    resolution = f"{fmt.get('width')}x{fmt.get('height')}" if fmt.get('width') and fmt.get('height') else 'Audio Only'
+                                    filesize_str = f"{round(fmt.get('filesize', 0) / (1024 * 1024), 2)} MB" if fmt.get('filesize') else "Size Unknown"
+                                    format_info = {
+                                        'format_id': fmt.get('format_id'),
+                                        'resolution': resolution,
+                                        'filesize': filesize_str,
+                                        'format_note': fmt.get('format_note', 'N/A'),
+                                        'ext': fmt.get('ext', 'N/A')
+                                    }
+                                    formats.append(format_info)
+                                videos.append({
+                                    'title': video_info.get('title', 'Untitled'),
+                                    'url': video_info.get('webpage_url', video_info.get('url')),
+                                    'thumbnail': video_info.get('thumbnail', ''),
+                                    'duration': video_info.get('duration', 0),
+                                    'formats': formats
+                                })
+                print(f"Processed {len(videos)} videos for playlist")
+                return result
             else:  # Single video
                 ydl_opts_single = {
                     'format': 'bestaudio/best' if selected_format == 'mp3' else 'bestvideo+bestaudio/best',
@@ -56,8 +73,9 @@ async def fetch_video_info(url, selected_format):
                     'no_warnings': True,
                     'noplaylist': True
                 }
-                info = await fetch_single_video_info(url, ydl_opts_single)
+                info = fetch_single_video_info(url, ydl_opts_single)
                 if not info:
+                    print("Failed to fetch single video info")
                     return None
                 formats = info.get('formats', [])
                 grouped_formats = {}
@@ -80,12 +98,14 @@ async def fetch_video_info(url, selected_format):
                         'ext': best_fmt.get('ext', 'N/A')
                     }
                     available_formats.append(format_info)
-                return {
+                result = {
                     'type': 'video',
                     'title': info.get('title', 'No title available'),
                     'thumbnail': info.get('thumbnail', ''),
                     'formats': available_formats
                 }
+                print(f"Single video fetched: {result['title']} with {len(available_formats)} formats")
+                return result
     except Exception as e:
         print(f"Error fetching video info for {url}: {str(e)}")
         return None

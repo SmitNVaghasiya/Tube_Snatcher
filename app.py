@@ -1,5 +1,7 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, Response, stream_with_context
 import os
+import time
+import json
 from details_featcher import fetch_video_info
 from video_downloader import download_video
 
@@ -10,15 +12,52 @@ def index():
     return render_template('index.html')
 
 @app.route('/fetch_details', methods=['POST'])
-async def fetch_details():
+def fetch_details():
     url = request.form.get('url')
     format_type = request.form.get('format', 'mp4')
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
-    result = await fetch_video_info(url, format_type)
-    if result is None:
-        return jsonify({'error': 'Failed to fetch video details'}), 500
-    return jsonify(result)
+
+    # Log when fetching starts
+    print(f"Fetching started for {url}")
+
+    # Measure the start time before fetching details
+    start_time = time.time()
+
+    # Fetch the video/playlist info
+    result = fetch_video_info(url, format_type)
+
+    # Calculate the time taken after fetching details
+    end_time = time.time()
+    time_taken = end_time - start_time
+    print(f"Details fetched for {url}. Time taken: {time_taken:.2f} seconds")
+
+    def generate():
+        if result is None:
+            yield json.dumps({'error': 'Failed to fetch video details'}) + '\n'
+            return
+
+        if result['type'] == 'playlist':
+            # Stream playlist data incrementally
+            yield json.dumps({
+                'type': 'playlist',
+                'title': result['title'],
+                'thumbnail': result['thumbnail'],
+                'videos': []  # Initial empty list
+            }) + '\n'
+
+            # Stream each video's details as they are fetched
+            for video in result['videos']:
+                yield json.dumps({
+                    'type': 'video_update',
+                    'video': video
+                }) + '\n'
+        else:
+            # Single video, send all at once
+            yield json.dumps(result) + '\n'
+
+    # Stream the response
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 @app.route('/download', methods=['POST'])
 def download():
