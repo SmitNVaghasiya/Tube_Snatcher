@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tube Snatcher</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="script.js"></script>
+  </head>
+  <body>
+    <h1>Download Videos at HD resolution</h1>
+    <div class="container">
+      <div class="above-center">
+        <form id="downloadForm">
+          <div class="input-wrapper">
+            <input
+              type="text"
+              id="urlInput"
+              placeholder="Paste YouTube URL here"
+            />
+            <select id="formatSelect" class="format-dropdown">
+              <option value="mp4">Video (MP4)</option>
+              <option value="mp3">Audio (MP3)</option>
+            </select>
+            <button type="submit" class="button">Download</button>
+          </div>
+        </form>
+      </div>
+      <div class="loading-container">
+        <div class="loading-circle" id="loadingCircle"></div>
+      </div>
+      <div class="below-container hidden">
+        <div class="content">
+          <div class="content-card">
+            <div class="picture-card">
+              <img id="videoThumbnail" src="" alt="Video Thumbnail" />
+            </div>
+            <div class="description-card">
+              <p class="description" id="videoDescription"></p>
+            </div>
+          </div>
+          <div class="download-card options"></div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

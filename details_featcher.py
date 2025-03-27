@@ -1,72 +1,79 @@
 import yt_dlp
+import asyncio
+import aiohttp
+from concurrent.futures import ThreadPoolExecutor
 
-def fetch_video_info(url, selected_format):
+async def fetch_video_info(url, selected_format):
     ydl_opts = {
-        'format': 'bestaudio/best' if selected_format == 'mp3' else 'bestvideo+bestaudio/best',
-        # 'cookiefile': 'cookies.txt',
-        'skip_download': True,  # Only extract info, don't download
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': False,
     }
+
+    async def fetch_single_video_info(video_url, ydl_opts):
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            info = await loop.run_in_executor(pool, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(video_url, download=False))
+        return info
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            
-            if not info:
-                print("Error: Could not fetch video details.")
-                return None, []
-
-            formats = info.get('formats', [])
-            available_formats = []
-
-            for fmt in formats:
-                ext = fmt.get('ext', 'N/A')
-
-                # Filter formats based on user selection (mp3 or mp4)
-                if selected_format == 'mp3' and fmt.get('acodec') == 'none':
-                    continue  # Skip video-only formats for mp3 mode
-                elif selected_format == 'mp4' and fmt.get('vcodec') == 'none':
-                    continue  # Skip audio-only formats for mp4 mode
-
-                # Handle File Size Display
-                filesize_raw = fmt.get('filesize')  # Get raw filesize (can be None)
-                if filesize_raw is not None:
-                    filesize_mb = round(filesize_raw / (1024 * 1024), 2)
-                    filesize_str = f"{filesize_mb} MB" if filesize_mb < 1024 else f"{round(filesize_mb / 1024, 2)} GB"
-                else:
-                    filesize_mb = 0  # Default for sorting
-                    filesize_str = "Unknown"
-
-                format_info = {
-                    'format_id': fmt.get('format_id'),
-                    'resolution': f"{fmt.get('width')}x{fmt.get('height')}" if fmt.get('width') and fmt.get('height') else 'Audio Only',
-                    'filesize': filesize_str,
-                    'filesize_value': filesize_mb,  # Ensure sorting works
-                    'format_note': fmt.get('format_note', 'N/A'),
-                    'ext': ext
+            if 'entries' in info:  # Playlist detected
+                videos = []
+                tasks = []
+                for entry in info['entries']:
+                    video_url = entry.get('url', entry.get('webpage_url'))
+                    tasks.append(fetch_single_video_info(video_url, ydl_opts))
+                video_infos = await asyncio.gather(*tasks)
+                for video_info in video_infos:
+                    videos.append({
+                        'title': video_info.get('title', 'Untitled'),
+                        'url': video_info.get('webpage_url', video_info.get('url')),
+                        'thumbnail': video_info.get('thumbnail', ''),
+                        'duration': video_info.get('duration', 0)
+                    })
+                return {
+                    'type': 'playlist',
+                    'title': info.get('title', 'Playlist'),
+                    'thumbnail': info.get('thumbnails', [{}])[-1].get('url', ''),  # Use highest quality thumbnail
+                    'videos': videos
                 }
-                available_formats.append(format_info)
-
-            # Group formats by resolution, keeping the highest quality
-            grouped_formats = {}
-            for fmt in available_formats:
-                res = fmt['resolution']
-                if res in grouped_formats:
-                    if fmt['filesize_value'] > grouped_formats[res]['filesize_value']:
-                        grouped_formats[res] = fmt
-                else:
-                    grouped_formats[res] = fmt
-
-            return info, list(grouped_formats.values())
-
+            else:  # Single video
+                ydl_opts_single = {
+                    'format': 'bestaudio/best' if selected_format == 'mp3' else 'bestvideo+bestaudio/best',
+                    'quiet': True,
+                    'no_warnings': True,
+                    'noplaylist': True
+                }
+                info = await fetch_single_video_info(url, ydl_opts_single)
+                formats = info.get('formats', [])
+                grouped_formats = {}
+                for fmt in formats:
+                    if 'storyboard' in fmt.get('format_note', '').lower():  # Skip storyboard formats
+                        continue
+                    resolution = f"{fmt.get('width')}x{fmt.get('height')}" if fmt.get('width') and fmt.get('height') else 'Audio Only'
+                    if resolution not in grouped_formats:
+                        grouped_formats[resolution] = []
+                    grouped_formats[resolution].append(fmt)
+                available_formats = []
+                for res, fmt_list in grouped_formats.items():
+                    best_fmt = max(fmt_list, key=lambda x: x.get('filesize', 0) or 0)
+                    filesize_str = f"{round(best_fmt.get('filesize', 0) / (1024 * 1024), 2)} MB" if best_fmt.get('filesize') else "Size Unknown"
+                    format_info = {
+                        'format_id': best_fmt.get('format_id'),
+                        'resolution': res,
+                        'filesize': filesize_str,
+                        'format_note': best_fmt.get('format_note', 'N/A'),
+                        'ext': best_fmt.get('ext', 'N/A')
+                    }
+                    available_formats.append(format_info)
+                return {
+                    'type': 'video',
+                    'title': info.get('title', 'No title available'),
+                    'thumbnail': info.get('thumbnail', ''),
+                    'formats': available_formats
+                }
     except Exception as e:
         print(f"Error fetching video info: {str(e)}")
-        return None, []
-
-# # Example Usage (REMOVE THIS)
-# video_url = "https://www.youtube.com/watch?v=VALID_VIDEO_ID"  # Replace with an actual video URL
-# selected_format = "mp4"
-# info, formats = fetch_video_info(video_url, selected_format)
-
-# for fmt in formats:
-#     display_size = fmt['filesize'] if fmt['filesize'] else ""
-#     print(f"{fmt['format_note']}, {fmt['resolution']}, {display_size}")
+        return None

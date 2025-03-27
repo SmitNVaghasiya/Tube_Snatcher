@@ -1,48 +1,90 @@
 $(document).ready(function () {
-  // Function to fetch video details and update UI (for individual resolution buttons)
   function fetchDetails() {
     var url = $("#urlInput").val().trim();
-    var format = $("#formatSelect").val(); // Get selected format (mp4 or mp3)
+    var format = $("#formatSelect").val();
     if (url === "") return;
 
-    $("#loadingCircle").show();
+    // Clear previous content
+    $("#videoDescription").text("");
+    $("#videoThumbnail").attr("src", "");
+    $(".download-card.options").html("");
+    $(".below-container").addClass("hidden");
 
+    $("#loadingCircle").show();
     $.ajax({
       type: "POST",
       url: "/fetch_details",
-      data: { url: url, format: format }, // Pass selected format to backend
+      data: { url: url, format: format },
       dataType: "json",
       success: function (response) {
         $("#loadingCircle").hide();
-
         if (response.error) {
           $("#videoDescription").text("Error: " + response.error);
           $("#videoThumbnail").attr("src", "");
           $(".below-container").addClass("hidden");
           return;
         }
-
-        // Update UI with video details and formats
-        $("#videoDescription").text(response.title);
-        $("#videoThumbnail").attr("src", response.thumbnail);
-
-        var formatsHtml = "";
-        response.formats.forEach(function (fmt) {
-          // Only show filesize if available
-          var sizeText = fmt.filesize ? fmt.filesize : "";
-          formatsHtml += `
-            <div class="option">
-                <span>${fmt.format_note}, ${fmt.resolution}${
-            sizeText ? ", " + sizeText : ""
-          }</span>
-                <button class="downloadButton" data-format-id="${
-                  fmt.format_id
-                }">Download</button>
-            </div>
-          `;
-        });
-        $(".download-card.options").html(formatsHtml);
-        $(".below-container").removeClass("hidden");
+        if (response.type === "playlist") {
+          $("#videoDescription").text(response.title);
+          $("#videoThumbnail").attr("src", response.thumbnail);
+          var videosHtml = `
+                      <select id="playlistResolution">
+                          <option value="best">Best Quality</option>
+                          <option value="1080p">1080p</option>
+                          <option value="720p">720p</option>
+                          <option value="480p">480p</option>
+                          <option value="360p">360p</option>
+                          <option value="240p">240p</option>
+                          <option value="144p">144p</option>
+                      </select>
+                      <div class="select-videos">
+                          <input type="text" id="videoSelection" placeholder="e.g., 1,4,7-10,15">
+                          <button id="selectVideos">Select Videos</button>
+                      </div>
+                      <div class="playlist-videos">`;
+          response.videos.forEach(function (video, index) {
+            var duration = video.duration
+              ? `${Math.floor(video.duration / 60)}:${(video.duration % 60)
+                  .toString()
+                  .padStart(2, "0")}`
+              : "N/A";
+            var thumbnailUrl =
+              video.thumbnail ||
+              "https://via.placeholder.com/200x112?text=No+Thumbnail";
+            videosHtml += `
+                          <div class="video-box loading">
+                              <img src="${thumbnailUrl}" alt="${video.title}" onload="this.parentElement.classList.remove('loading')">
+                              <div class="loading-dots">...</div>
+                              <p class="video-title">${video.title}</p>
+                              <hr class="divider">
+                              <p>Duration: ${duration}</p>
+                              <input type="checkbox" id="video${index}" value="${video.url}">
+                          </div>
+                      `;
+          });
+          videosHtml += `</div><button id="downloadSelected">Download Selected</button>`;
+          $(".download-card.options").html(videosHtml);
+          $(".below-container").removeClass("hidden");
+        } else {
+          $("#videoDescription").text(response.title);
+          $("#videoThumbnail").attr("src", response.thumbnail);
+          var formatsHtml = "";
+          response.formats.forEach(function (fmt) {
+            var sizeText = fmt.filesize ? fmt.filesize : "";
+            formatsHtml += `
+                          <div class="option">
+                              <span>${fmt.format_note}, ${fmt.resolution}${
+              sizeText ? ", " + sizeText : ""
+            }</span>
+                              <button class="downloadButton" data-format-id="${
+                                fmt.format_id
+                              }">Download</button>
+                          </div>
+                      `;
+          });
+          $(".download-card.options").html(formatsHtml);
+          $(".below-container").removeClass("hidden");
+        }
       },
       error: function () {
         $("#loadingCircle").hide();
@@ -53,24 +95,16 @@ $(document).ready(function () {
     });
   }
 
-  // Fetch details when the URL input or format dropdown changes
-  $("#urlInput").on("input", function () {
-    fetchDetails();
-  });
-  $("#formatSelect").on("change", function () {
-    fetchDetails();
-  });
+  $("#urlInput").on("input", fetchDetails);
+  $("#formatSelect").on("change", fetchDetails);
 
-  // Main download button (form submit event)
   $("#downloadForm").on("submit", function (e) {
-    e.preventDefault(); // Prevent page reload
+    e.preventDefault();
     var url = $("#urlInput").val().trim();
     var format = $("#formatSelect").val();
     if (url === "") return;
-
+    $('button[type="submit"]').prop("disabled", true);
     $("#loadingCircle").show();
-
-    // First, fetch details so we know which formats are available
     $.ajax({
       type: "POST",
       url: "/fetch_details",
@@ -80,94 +114,174 @@ $(document).ready(function () {
         $("#loadingCircle").hide();
         if (response.error) {
           $("#videoDescription").text("Error: " + response.error);
+          $('button[type="submit"]').prop("disabled", false);
           return;
         }
-
-        var bestFormat = null;
-        if (format === "mp4") {
-          // For MP4, choose the one with the highest resolution (by height)
-          var maxHeight = 0;
-          response.formats.forEach(function (fmt) {
-            if (fmt.resolution && fmt.resolution !== "Audio Only") {
-              var parts = fmt.resolution.split("x");
-              if (parts.length === 2) {
-                var height = parseInt(parts[1]);
+        if (response.type === "video") {
+          var bestFormat = response.formats[0];
+          if (format === "mp4") {
+            var maxHeight = 0;
+            response.formats.forEach(function (fmt) {
+              if (fmt.resolution && fmt.resolution !== "Audio Only") {
+                var height = parseInt(fmt.resolution.split("x")[1]);
                 if (height > maxHeight) {
                   maxHeight = height;
                   bestFormat = fmt;
                 }
               }
-            }
-          });
-        } else {
-          // For MP3, simply choose the first available option
-          if (response.formats.length > 0) {
-            bestFormat = response.formats[0];
+            });
           }
-        }
-
-        if (bestFormat) {
-          // Trigger download using the best format's format_id
-          $.ajax({
-            type: "POST",
-            url: "/download",
-            data: { url: url, format_id: bestFormat.format_id },
-            dataType: "json",
-            success: function (downloadResponse) {
-              if (downloadResponse.error) {
-                $("#responseContainer").html(
-                  "Error: " + downloadResponse.error
-                );
-              } else {
-                $("#responseContainer").html(
-                  'Download started: <a href="/download_file/' +
-                    encodeURIComponent(downloadResponse.filename) +
-                    '" download>Click here to download</a>'
-                );
-              }
-            },
-            error: function () {
-              $("#responseContainer").html(
-                "An error occurred while downloading."
-              );
-            },
-          });
+          if (bestFormat) {
+            $.ajax({
+              type: "POST",
+              url: "/download",
+              data: {
+                url: url,
+                format_id: bestFormat.format_id,
+                format: format,
+              },
+              dataType: "json",
+              success: function (downloadResponse) {
+                $("#loadingCircle").hide();
+                if (downloadResponse.error) {
+                  $("#videoDescription").text(
+                    "Error: " + downloadResponse.error
+                  );
+                } else {
+                  $("#videoDescription").text(downloadResponse.message);
+                }
+                $('button[type="submit"]').prop("disabled", false);
+              },
+              error: function () {
+                $("#loadingCircle").hide();
+                $("#videoDescription").text("Download failed.");
+                $('button[type="submit"]').prop("disabled", false);
+              },
+            });
+          } else {
+            $("#loadingCircle").hide();
+            $("#videoDescription").text("No suitable format found.");
+            $('button[type="submit"]').prop("disabled", false);
+          }
         } else {
-          $("#responseContainer").html("No suitable format found.");
+          $('button[type="submit"]').prop("disabled", false);
         }
       },
       error: function () {
         $("#loadingCircle").hide();
         $("#videoDescription").text("An error occurred.");
+        $('button[type="submit"]').prop("disabled", false);
       },
     });
   });
 
-  // Individual resolution download buttons
-  $(document).on("click", ".downloadButton", function () {
-    var url = $("#urlInput").val().trim();
-    var formatId = $(this).data("format-id");
-    if (url === "") return;
+  $(document).on("click", ".video-box", function () {
+    var checkbox = $(this).find('input[type="checkbox"]');
+    checkbox.prop("checked", !checkbox.prop("checked"));
+  });
 
+  $(document).on("click", "#selectVideos", function () {
+    var selection = $("#videoSelection").val().trim();
+    if (!selection) return;
+
+    // Clear previous selections
+    $(".playlist-videos input[type='checkbox']").prop("checked", false);
+
+    // Parse the input (e.g., "1,4,7-10,15")
+    var ranges = selection.split(",").map((s) => s.trim());
+    var selectedIndices = new Set();
+
+    ranges.forEach((range) => {
+      if (range.includes("-")) {
+        var [start, end] = range.split("-").map(Number);
+        for (var i = start - 1; i < end; i++) {
+          selectedIndices.add(i);
+        }
+      } else {
+        selectedIndices.add(Number(range) - 1);
+      }
+    });
+
+    // Select the corresponding checkboxes
+    selectedIndices.forEach((index) => {
+      $(`#video${index}`).prop("checked", true);
+    });
+  });
+
+  $(document).on("click", "#downloadSelected", function () {
+    var selectedVideos = [];
+    $(".playlist-videos input[type='checkbox']:checked").each(function () {
+      selectedVideos.push($(this).val());
+    });
+    if (selectedVideos.length === 0) {
+      alert("Please select at least one video to download.");
+      return;
+    }
+    var selectedResolution = $("#playlistResolution").val();
+    var desiredHeight =
+      selectedResolution === "best"
+        ? "best"
+        : selectedResolution.replace("p", "");
+    $("#downloadSelected").prop("disabled", true);
+    $("#loadingCircle").show();
+    downloadNextVideo(selectedVideos, 0, desiredHeight);
+  });
+
+  function downloadNextVideo(videos, index, desiredHeight) {
+    if (index >= videos.length) {
+      $("#loadingCircle").hide();
+      $("#downloadSelected").prop("disabled", false);
+      $("#videoDescription").text("All selected videos have been downloaded.");
+      return;
+    }
+    var url = videos[index];
+    var format = $("#formatSelect").val();
     $.ajax({
       type: "POST",
       url: "/download",
-      data: { url: url, format_id: formatId },
+      data: { url: url, desired_height: desiredHeight, format: format },
       dataType: "json",
-      success: function (response) {
-        if (response.error) {
-          $("#responseContainer").html("Error: " + response.error);
+      success: function (downloadResponse) {
+        if (downloadResponse.error) {
+          console.error("Error downloading video:", downloadResponse.error);
         } else {
-          $("#responseContainer").html(
-            'Download started: <a href="/download_file/' +
-              encodeURIComponent(response.filename) +
-              '" download>Click here to download</a>'
-          );
+          $("#videoDescription").text(downloadResponse.message);
         }
+        downloadNextVideo(videos, index + 1, desiredHeight);
       },
       error: function () {
-        $("#responseContainer").html("An error occurred.");
+        console.error("Download failed for video:", url);
+        downloadNextVideo(videos, index + 1, desiredHeight);
       },
+    });
+  }
+
+  $(document).on("click", ".downloadButton", function () {
+    var url = $("#urlInput").val().trim();
+    var formatId = $(this).data("format-id");
+    var format = $("#formatSelect").val();
+    if (url === "") return;
+    $(this).prop("disabled", true);
+    $("#loadingCircle").show();
+    $.ajax({
+      type: "POST",
+      url: "/download",
+      data: { url: url, format_id: formatId, format: format },
+      dataType: "json",
+      success: function (response) {
+        $("#loadingCircle").hide();
+        if (response.error) {
+          $("#videoDescription").text("Error: " + response.error);
+        } else {
+          $("#videoDescription").text(response.message);
+        }
+        $(this).prop("disabled", false);
+      }.bind(this),
+      error: function () {
+        $("#loadingCircle").hide();
+        $("#videoDescription").text("Download failed.");
+        $(this).prop("disabled", false);
+      }.bind(this),
     });
   });
 });
