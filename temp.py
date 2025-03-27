@@ -1,14 +1,11 @@
 import os 
 import yt_dlp
 
-def download_video(url, format_id, directory):
+def download_video(url, directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
     ydl_opts = {
-        'format': format_id,
-        # 'proxy': 'http://203.115.101.53:5000',
-        'cookiefile': 'cookies.txt',
         'outtmpl': os.path.join(directory, '%(title)s.%(ext)s'),
     }
 
@@ -20,3 +17,9 @@ def download_video(url, format_id, directory):
     except Exception as e:
         print(f"Error downloading video: {str(e)}")  # Debug print
         return 'Something Went Wrong', str(e), '', ''
+
+# # Example Usage (REMOVE THIS)
+Youtube_video_url = "https://youtu.be/6ya5KMhR4ug?si=jx-ySNTmOUCtMlhi" 
+# Directory is location where you want to save you video
+directory = "temp"
+download_video(Youtube_video_url, directory)

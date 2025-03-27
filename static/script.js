@@ -22,6 +22,7 @@ $(document).ready(function () {
           return;
         }
 
+        // Update UI with video details and formats
         $("#videoDescription").text(response.title);
         $("#videoThumbnail").attr("src", response.thumbnail);
 
@@ -30,15 +31,15 @@ $(document).ready(function () {
           // Only show filesize if available
           var sizeText = fmt.filesize ? fmt.filesize : "";
           formatsHtml += `
-                        <div class="option">
-                            <span>${fmt.format_note}, ${fmt.resolution}${
+            <div class="option">
+                <span>${fmt.format_note}, ${fmt.resolution}${
             sizeText ? ", " + sizeText : ""
           }</span>
-                            <button class="downloadButton" data-format-id="${
-                              fmt.format_id
-                            }">Download</button>
-                        </div>
-                    `;
+                <button class="downloadButton" data-format-id="${
+                  fmt.format_id
+                }">Download</button>
+            </div>
+          `;
         });
         $(".download-card.options").html(formatsHtml);
         $(".below-container").removeClass("hidden");
@@ -147,6 +148,7 @@ $(document).ready(function () {
     var url = $("#urlInput").val().trim();
     var formatId = $(this).data("format-id");
     if (url === "") return;
+
     $.ajax({
       type: "POST",
       url: "/download",

@@ -1,16 +1,24 @@
-import os 
+import os
 import yt_dlp
 
-def download_video(url, format_id, directory):
+def download_video(url, format_id, directory, file_type):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-    ydl_opts = {
-        'format': format_id,
-        # 'proxy': 'http://203.115.101.53:5000',
-        # 'cookiefile': 'cookies.txt',
-        'outtmpl': os.path.join(directory, '%(title)s.%(ext)s'),
-    }
+    # Set format options based on file type
+    if file_type == "mp3":
+        ydl_opts = {
+            'format': format_id,  # Use the exact format selected by the user
+            'extract_audio': True,
+            'audio_format': 'mp3',
+            'outtmpl': os.path.join(directory, '%(title)s.%(ext)s'),
+        }
+    else:  # MP4 Download (with best video + best audio)
+        ydl_opts = {
+            # 'format': f"{format_id}+bestaudio/best",  # Use selected video + best audio
+            # 'merge_output_format': 'mp4',  # Merge audio and video into mp4 format
+            'outtmpl': os.path.join(directory, '%(title)s.%(ext)s'),
+        }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

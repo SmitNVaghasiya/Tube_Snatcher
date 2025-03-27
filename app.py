@@ -30,14 +30,17 @@ def fetch_details():
     })
 
 @app.route('/download', methods=['POST'])
+
 def download():
     url = request.form.get('url')
     format_id = request.form.get('format_id')
+    # file_type = request.form.get("")
     if not url or not format_id:
         return jsonify({'error': 'URL and format_id parameters are required'}), 400
 
     directory = 'Flask_api/temp'  # Update temp directory path
-    filename, error, title, thumbnail = download_video(url, format_id, directory)
+    filename, error, title, thumbnail = download_video(url, format_id, directory) # This is not sending the file format but we are using it in the video_download file
+    # filename, error, title, thumbnail = download_video(url, format_id, directory, file_type)
     
     if error:
         return jsonify({'error': error}), 400
@@ -46,7 +49,7 @@ def download():
 
 @app.route('/download_file/<filename>')
 def download_file(filename):
-    directory = 'Flask_api/temp'  # Update temp directory path
+    directory = 'temp'  # Update temp directory path
     safe_filename = os.path.basename(filename)  # Prevent path traversal
     filepath = os.path.join(directory, safe_filename)
     
