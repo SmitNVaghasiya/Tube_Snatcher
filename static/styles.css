@@ -57,13 +57,13 @@ input[type="text"]::placeholder {
 
 .button,
 .option button,
-#downloadSelected,
-#selectVideos {
+#download,
+#downloadVideos,
+.download-video {
   border: none;
   color: #fff;
   cursor: pointer;
   font-size: 16px;
-  background-color: #6c63ff;
   transition: background-color 0.3s ease;
 }
 
@@ -71,13 +71,23 @@ input[type="text"]::placeholder {
   padding: 15px 30px;
   border-radius: 0 10px 10px 0;
   height: 61px;
+  background-color: #6c63ff;
 }
 
 .button:hover,
 .option button:hover,
-#downloadSelected:hover,
-#selectVideos:hover {
+#download:hover,
+#downloadVideos:hover,
+.download-video:hover {
   background-color: #5753c9;
+}
+
+.download-video {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background-color: #3a3a3a; /* Match video box background */
+  margin: 5px 0;
+  width: 100%;
 }
 
 .below-container {
@@ -196,6 +206,7 @@ img {
 .option button {
   padding: 10px 20px;
   border-radius: 10px;
+  background-color: #6c63ff;
 }
 
 .option input[type="checkbox"] {
@@ -208,13 +219,14 @@ img {
   text-align: left;
 }
 
-#downloadSelected {
+#download {
   margin-top: 20px;
   padding: 10px 20px;
   border-radius: 10px;
+  background-color: #6c63ff;
 }
 
-#downloadSelected:disabled {
+#download:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
 }
@@ -261,12 +273,18 @@ img {
   background-color: #3a3a3a;
   color: #dcdcdc;
   font-size: 16px;
-  width: 200px;
+  width: 300px; /* Increased size */
 }
 
-#selectVideos {
+#downloadVideos {
   padding: 10px 20px;
   border-radius: 10px;
+  background-color: #6c63ff;
+}
+
+#downloadVideos:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
 }
 
 .playlist-videos {
@@ -283,6 +301,9 @@ img {
   padding: 10px;
   border-radius: 10px;
   box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.3);
+}
+
+.video-selector {
   cursor: pointer;
 }
 
@@ -331,7 +352,7 @@ img {
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin: 10px 0;
+  margin: 10px 0 5px 0; /* Reduced bottom margin for consistency */
   font-size: 14px;
   color: #dcdcdc;
 }
@@ -343,16 +364,18 @@ img {
   margin: 5px 0;
 }
 
+.divider.secondary {
+  margin: 5px 0;
+}
+
 .video-box p {
-  margin: 10px 0;
+  margin: 5px 0;
   font-size: 14px;
   color: #dcdcdc;
 }
 
-.video-box input[type="checkbox"] {
-  position: absolute;
-  top: 10px;
-  right: 10px;
+.hidden-checkbox {
+  display: none;
 }
 
 #playlistResolution {

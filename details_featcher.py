@@ -10,11 +10,19 @@ async def fetch_video_info(url, selected_format):
         'noplaylist': False,
     }
 
+    # Semaphore to limit concurrent tasks to 5
+    semaphore = asyncio.Semaphore(5)
+
     async def fetch_single_video_info(video_url, ydl_opts):
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor() as pool:
-            info = await loop.run_in_executor(pool, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(video_url, download=False))
-        return info
+        async with semaphore:  # Limit concurrent tasks
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor() as pool:
+                try:
+                    info = await loop.run_in_executor(pool, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(video_url, download=False))
+                    return info
+                except Exception as e:
+                    print(f"Error fetching info for {video_url}: {str(e)}")
+                    return None
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -24,19 +32,21 @@ async def fetch_video_info(url, selected_format):
                 tasks = []
                 for entry in info['entries']:
                     video_url = entry.get('url', entry.get('webpage_url'))
-                    tasks.append(fetch_single_video_info(video_url, ydl_opts))
+                    if video_url:
+                        tasks.append(fetch_single_video_info(video_url, ydl_opts))
                 video_infos = await asyncio.gather(*tasks)
                 for video_info in video_infos:
-                    videos.append({
-                        'title': video_info.get('title', 'Untitled'),
-                        'url': video_info.get('webpage_url', video_info.get('url')),
-                        'thumbnail': video_info.get('thumbnail', ''),
-                        'duration': video_info.get('duration', 0)
-                    })
+                    if video_info:  # Only add if info was successfully fetched
+                        videos.append({
+                            'title': video_info.get('title', 'Untitled'),
+                            'url': video_info.get('webpage_url', video_info.get('url')),
+                            'thumbnail': video_info.get('thumbnail', ''),
+                            'duration': video_info.get('duration', 0)
+                        })
                 return {
                     'type': 'playlist',
                     'title': info.get('title', 'Playlist'),
-                    'thumbnail': info.get('thumbnails', [{}])[-1].get('url', ''),  # Use highest quality thumbnail
+                    'thumbnail': info.get('thumbnails', [{}])[-1].get('url', ''),
                     'videos': videos
                 }
             else:  # Single video
@@ -47,6 +57,8 @@ async def fetch_video_info(url, selected_format):
                     'noplaylist': True
                 }
                 info = await fetch_single_video_info(url, ydl_opts_single)
+                if not info:
+                    return None
                 formats = info.get('formats', [])
                 grouped_formats = {}
                 for fmt in formats:
@@ -75,5 +87,5 @@ async def fetch_video_info(url, selected_format):
                     'formats': available_formats
                 }
     except Exception as e:
-        print(f"Error fetching video info: {str(e)}")
+        print(f"Error fetching video info for {url}: {str(e)}")
         return None
