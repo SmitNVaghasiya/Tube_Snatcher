@@ -12,3 +12,4 @@ when showing the playlist remove left side description and picture boxes and sho
 ---
 
 -- have to convert project from the pure html to next and fast api properly
+-- show All selected videos have been downloaded. at botoom in green color.
