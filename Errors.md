@@ -1,19 +1,14 @@
---  <select id="playlistResolution">
-                                  <option value="best">Best Quality</option>
-                                  <option value="1080p">1080p</option>
-                                  <option value="720p">720p</option>
-                                  <option value="480p">480p</option>
-                                  <option value="360p">360p</option>
-                                  <option value="240p">240p</option>
-                                  <option value="144p">144p</option>
-                              </select>
-                              <div class="select-videos">
-                                  <input type="ctext" id="videoSelection" placeholder="e.g., 1,4,7-10,15">
-                                  <button id="downloadVideos">Download</button>
-                              </div> 
+------------------------------------- 28/03/2025 --------------------------------------------------------
+-- i have make ui proper according to the old tube snacher photos i have as grok has ruined it littel bit
+-- make ui responsive specially for the mobile view
+-- have to find a way to run on any browser by using the coockies from that user
+-- remove the button of the loading circle when started downloading
+-- Details fetched for https://youtube.com/playlist?list=PLA3GkZPtsafZydhN4nP0h7hw7PQuLsBv1&si=AItOcpzukyCl0Ugy. Time taken: 369.00 seconds this is taking the too musch time right reduce that time if possible or start showing the info once it start getting any data related to the playlist
 
-this needs to be dynamic as we will show only those options youtube allows to download this we are showing for the playlist option 
+https://youtube.com/playlist?list=PLA3GkZPtsafZydhN4nP0h7hw7PQuLsBv1&si=AItOcpzukyCl0Ugy
 
--- when tried to download the specific resolution single video it was not allowing 
--- divider here and Duration: 6:18 Download make sure to fit two box side by side while filling their parent container and also solving download problem in playlist also 
--- reduce the best quality drop down width lttle bit and make sure to fill the 1,4,5-6 like this input box colomun by increasing it's width 
+when showing the playlist remove left side description and picture boxes and show all the videos in the main parent box
+
+---
+
+-- have to convert project from the pure html to next and fast api properly
