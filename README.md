@@ -46,7 +46,7 @@ YouTube has strict anti-bot measures, making it difficult to download videos dir
    python app.py
    ```
 4. **Access the Web Interface**
-   Open `http://127.0.0.1:5000` in your browser.
+   Open `http://127.0.0.1:8000` in your browser.
 
 ## Deployment Notes
 
