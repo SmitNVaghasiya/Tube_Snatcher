@@ -1,18 +1,28 @@
+# app/details_fetcher.py
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 
 def fetch_video_info(url, selected_format):
+    # Updated options to fetch all video formats with file size information
     ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'noplaylist': False,
+        'quiet': True,  # Suppress console output, including format table
+        'no_warnings': True,  # Suppress warnings
+        'noplaylist': False,  # Handle playlists
+        'format': 'bestvideo+bestaudio/best' if selected_format != 'mp3' else 'bestaudio/best',  # Request video and audio formats
+        'merge_output_format': 'mp4' if selected_format != 'mp3' else None,  # Ensure MP4 for video, none for MP3
+        'get_filesize': True,  # Request file size
+        'dump_single_json': False,  # Avoid single JSON dump for detailed format list
+        # Removed 'listformats': True to prevent format table output in cmd
     }
 
     def fetch_single_video_info(video_url, ydl_opts):
+        """Helper function to fetch info for a single video."""
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(video_url, download=False)
-                print(f"Fetched info for {video_url}: {info.get('title', 'Untitled')}")
+                # Debug: Print raw format data to verify file size retrieval
+                print(f"Raw format data for {video_url}:")
+                # print(f"Raw format data for {video_url}: {info.get('formats', [])}")
                 return info
         except Exception as e:
             print(f"Error fetching info for {video_url}: {str(e)}")
@@ -23,32 +33,34 @@ def fetch_video_info(url, selected_format):
             info = ydl.extract_info(url, download=False)
             if 'entries' in info:  # Playlist detected
                 videos = []
-                batch_size = 5  # Process 5 videos at a time
+                batch_size = 5  # Process in batches for efficiency
                 entries = info['entries']
-
-                # Initial playlist metadata
                 result = {
                     'type': 'playlist',
                     'title': info.get('title', 'Playlist'),
                     'thumbnail': info.get('thumbnails', [{}])[-1].get('url', ''),
                     'videos': videos
                 }
-                print(f"Playlist detected: {result['title']} with {len(entries)} videos")
 
-                # Process videos in batches using ThreadPoolExecutor
                 with ThreadPoolExecutor() as executor:
                     for i in range(0, len(entries), batch_size):
                         batch = entries[i:i + batch_size]
                         batch_urls = [entry.get('url', entry.get('webpage_url')) for entry in batch if entry.get('url', entry.get('webpage_url'))]
                         video_infos = list(executor.map(lambda url: fetch_single_video_info(url, ydl_opts), batch_urls))
                         for video_info in video_infos:
-                            if video_info:  # Only add if info was successfully fetched
+                            if video_info:
                                 formats = []
                                 for fmt in video_info.get('formats', []):
-                                    if 'storyboard' in fmt.get('format_note', '').lower():  # Skip storyboard formats
+                                    # Skip storyboards or irrelevant formats
+                                    if 'storyboard' in fmt.get('format_note', '').lower():
                                         continue
-                                    resolution = f"{fmt.get('width')}x{fmt.get('height')}" if fmt.get('width') and fmt.get('height') else 'Audio Only'
-                                    filesize_str = f"{round(fmt.get('filesize', 0) / (1024 * 1024), 2)} MB" if fmt.get('filesize') else "Size Unknown"
+                                    width = fmt.get('width')
+                                    height = fmt.get('height')
+                                    resolution = f"{width}x{height}" if width and height else 'Audio Only' if fmt.get('vcodec') == 'none' else 'N/A'
+                                    filesize = fmt.get('filesize') or fmt.get('filesize_approx', 0)
+                                    if not filesize and width and height:
+                                        filesize = estimate_filesize(width, height)  # Fallback estimation
+                                    filesize_str = f"{round(filesize / (1024 * 1024), 2)} MB" if filesize else "Size Unknown"
                                     format_info = {
                                         'format_id': fmt.get('format_id'),
                                         'resolution': resolution,
@@ -64,32 +76,41 @@ def fetch_video_info(url, selected_format):
                                     'duration': video_info.get('duration', 0),
                                     'formats': formats
                                 })
-                print(f"Processed {len(videos)} videos for playlist")
                 return result
             else:  # Single video
                 ydl_opts_single = {
                     'format': 'bestaudio/best' if selected_format == 'mp3' else 'bestvideo+bestaudio/best',
-                    'quiet': True,
+                    'quiet': True,  # Suppress console output
                     'no_warnings': True,
-                    'noplaylist': True
+                    'noplaylist': True,
+                    'get_filesize': True,
+                    # Removed 'listformats': True to prevent format table output in cmd
                 }
                 info = fetch_single_video_info(url, ydl_opts_single)
                 if not info:
-                    print("Failed to fetch single video info")
                     return None
                 formats = info.get('formats', [])
                 grouped_formats = {}
                 for fmt in formats:
-                    if 'storyboard' in fmt.get('format_note', '').lower():  # Skip storyboard formats
+                    if 'storyboard' in fmt.get('format_note', '').lower():
                         continue
-                    resolution = f"{fmt.get('width')}x{fmt.get('height')}" if fmt.get('width') and fmt.get('height') else 'Audio Only'
+                    width = fmt.get('width')
+                    height = fmt.get('height')
+                    resolution = f"{width}x{height}" if width and height else 'Audio Only' if fmt.get('vcodec') == 'none' else 'N/A'
+                    filesize = fmt.get('filesize') or fmt.get('filesize_approx', 0)
+                    if not filesize and width and height:
+                        filesize = estimate_filesize(width, height)  # Fallback estimation
+                    filesize_str = f"{round(filesize / (1024 * 1024), 2)} MB" if filesize else "Size Unknown"
                     if resolution not in grouped_formats:
                         grouped_formats[resolution] = []
                     grouped_formats[resolution].append(fmt)
                 available_formats = []
                 for res, fmt_list in grouped_formats.items():
-                    best_fmt = max(fmt_list, key=lambda x: x.get('filesize', 0) or 0)
-                    filesize_str = f"{round(best_fmt.get('filesize', 0) / (1024 * 1024), 2)} MB" if best_fmt.get('filesize') else "Size Unknown"
+                    best_fmt = max(fmt_list, key=lambda x: x.get('filesize', 0) or x.get('filesize_approx', 0) or 0)
+                    filesize = best_fmt.get('filesize') or best_fmt.get('filesize_approx', 0)
+                    if not filesize and best_fmt.get('width') and best_fmt.get('height'):
+                        filesize = estimate_filesize(best_fmt.get('width'), best_fmt.get('height'))
+                    filesize_str = f"{round(filesize / (1024 * 1024), 2)} MB" if filesize else "Size Unknown"
                     format_info = {
                         'format_id': best_fmt.get('format_id'),
                         'resolution': res,
@@ -104,8 +125,14 @@ def fetch_video_info(url, selected_format):
                     'thumbnail': info.get('thumbnail', ''),
                     'formats': available_formats
                 }
-                print(f"Single video fetched: {result['title']} with {len(available_formats)} formats")
                 return result
     except Exception as e:
         print(f"Error fetching video info for {url}: {str(e)}")
         return None
+
+def estimate_filesize(width, height):
+    """Estimate file size based on resolution (rough approximation)."""
+    resolution_area = width * height
+    # Rough estimation: ~1 MB per 100,000 pixels for typical video compression
+    estimated_size = (resolution_area / 100000) * 1024 * 1024  # In bytes
+    return estimated_size

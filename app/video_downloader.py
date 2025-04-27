@@ -1,11 +1,10 @@
+# app/video_downloader.py
 import time
 import os
 import yt_dlp
 
 def download_video(url, format_id_or_height, directory, format_type):
-    start_time = time.time()
-    print(f"Download started at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))}")
-
+    print(f"Download started for {url}")
     ydl_opts = {
         'outtmpl': os.path.join(directory, '%(title)s.%(ext)s'),
         'quiet': True,
@@ -38,7 +37,7 @@ def download_video(url, format_id_or_height, directory, format_type):
                 'key': 'FFmpegVideoConvertor',
                 'preferedformat': 'mp4',
             }],
-            'keepvideo': False,  # Delete intermediate files
+            'keepvideo': False,
         })
 
     try:
@@ -50,12 +49,5 @@ def download_video(url, format_id_or_height, directory, format_type):
     except Exception as e:
         print(f"Error downloading video: {str(e)}")
         return None, str(e), None, None
-
-    end_time = time.time()
-    duration = (end_time - start_time) / 60
-    file_size = os.path.getsize(filename) / (1024 * 1024)
-    print(f"Download finished at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_time))}")
-    print(f"Time taken: {duration:.2f} minutes")
-    print(f"File size: {file_size:.2f} MB")
 
     return filename, None, info.get('title', 'Untitled'), info.get('thumbnail', '')
