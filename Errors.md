@@ -1,5 +1,3 @@
-------------------------------------- 28/03/2025 --------------------------------------------------------
--- i have make ui proper according to the old tube snacher photos i have as grok has ruined it littel bit
 -- make ui responsive specially for the mobile view
 -- have to find a way to run on any browser by using the coockies from that user
 -- remove the button of the loading circle when started downloading
