@@ -1,4 +1,4 @@
-# Video Downloader - Tube Snatcher
+# YouTube Video Downloader - Tube Snatcher
 
 Tube Snatcher is a powerful tool that allows users to download audio and videos from YouTube at the highest resolution for free.
 
