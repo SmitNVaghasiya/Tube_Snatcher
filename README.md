@@ -2,6 +2,9 @@
 
 Tube Snatcher is a powerful tool that allows users to download audio and videos from YouTube at the highest resolution for free.
 
+![Screenshot 2025-04-27 175035](https://github.com/user-attachments/assets/4183db2c-c86a-4408-8863-7edcf6468b30)
+
+
 ## Features
 
 - Download YouTube videos in the **best available quality**
