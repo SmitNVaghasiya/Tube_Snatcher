@@ -1,0 +1,12 @@
+yt-dlp
+fastapi
+uvicorn[standard]
+asyncio
+pydantic
+python-jose[cryptography]
+passlib[bcrypt]
+cryptography
+pymongo
+motor
+python-multipart
+pydantic-settings

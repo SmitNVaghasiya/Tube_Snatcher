@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: tubesnatcher-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 2004
+      - key: SECRET_KEY
+        generateValue: true
+      - key: MONGODB_URL
+        value: mongodb://localhost:27017
+      - key: SHUTDOWN_DELAY
+        value: 3600
+      - key: COOKIE_ENCRYPTION_KEY
+        generateValue: true
