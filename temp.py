@@ -1,5 +1,3 @@
-#  This file lets you download any video at max resolution directly in system.
-
 import os 
 import yt_dlp
 
@@ -9,6 +7,8 @@ def download_video(url, directory):
 
     ydl_opts = {
         'outtmpl': os.path.join(directory, '%(title)s.%(ext)s'),
+        'format': 'bestvideo+bestaudio/best',  # Select highest quality video and audio
+        'merge_output_format': 'mp4',  # Ensure output is in mp4 format
     }
 
     try:
@@ -20,8 +20,7 @@ def download_video(url, directory):
         print(f"Error downloading video: {str(e)}")  # Debug print
         return 'Something Went Wrong', str(e), '', ''
 
-# # Example Usage (REMOVE THIS)
-Youtube_video_url = "https://youtu.be/6ya5KMhR4ug?si=jx-ySNTmOUCtMlhi" 
-# Directory is location where you want to save you video
+# Example Usage
+Youtube_video_url = "https://youtu.be/7kBUAZsrlXc?si=OGrFNjyUFVwp1oKN&t=3029"
 directory = "temp"
 download_video(Youtube_video_url, directory)

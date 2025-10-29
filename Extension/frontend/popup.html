@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Tube Snatcher</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Tube Snatcher</h1>
+            <div class="status" id="status">Ready</div>
+        </div>
+        
+        <div class="video-info" id="videoInfo" style="display: none;">
+            <div class="thumbnail">
+                <img id="thumbnail" src="" alt="Video thumbnail">
+            </div>
+            <div class="details">
+                <h3 id="videoTitle">Video Title</h3>
+                <p id="videoDuration">Duration: --</p>
+            </div>
+        </div>
+        
+        <!-- Playlist info display -->
+        <div class="playlist-info" id="playlistInfo" style="display: none;">
+            <h3>Playlist: <span id="playlistTitle">Playlist Title</span></h3>
+            <p id="playlistCount">0 videos</p>
+            <div id="playlistVideos" class="playlist-videos"></div>
+        </div>
+        
+        <div class="format-selection" id="formatSelection" style="display: none;">
+            <div class="format-options">
+                <div class="format-type-selector">
+                    <label for="formatType">Download as:</label>
+                    <select id="formatType">
+                        <option value="mp4">MP4 Video</option>
+                        <option value="mp3">MP3 Audio</option>
+                    </select>
+                </div>
+                <div class="content-type-selector" id="contentTypeSelector" style="display: none;">
+                    <label>Content Type:</label>
+                    <div class="content-type-options">
+                        <input type="radio" id="videoOnly" name="contentType" value="video" checked>
+                        <label for="videoOnly">Single Video</label>
+                        <input type="radio" id="playlistAll" name="contentType" value="playlist">
+                        <label for="playlistAll">Entire Playlist</label>
+                    </div>
+                </div>
+            </div>
+            
+            <h3>Select Quality:</h3>
+            <div class="formats" id="formats">
+                <!-- Format options will be populated here -->
+            </div>
+        </div>
+        
+        <div class="download-location" id="downloadLocation" style="display: none;">
+            <h3>Download Location:</h3>
+            <div class="location-options">
+                <div class="location-option">
+                    <input type="radio" name="location" value="default" id="defaultLocation" checked>
+                    <label for="defaultLocation">
+                        <div class="location-info">
+                            <div class="location-name">Default Downloads</div>
+                            <div class="location-path">~/Downloads/TubeSnatcher/</div>
+                        </div>
+                    </label>
+                </div>
+                <div class="location-option">
+                    <input type="radio" name="location" value="custom" id="customLocation">
+                    <label for="customLocation">
+                        <div class="location-info">
+                            <div class="location-name">Custom Folder</div>
+                            <div class="location-path">Choose folder...</div>
+                        </div>
+                    </label>
+                </div>
+                <div class="custom-path-input" id="customPathInput" style="display: none;">
+                    <input type="text" id="customPath" placeholder="Enter full path (e.g., C:\Videos)">
+                    <button id="browseBtn" class="browse-btn">Browse</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="download-section" id="downloadSection" style="display: none;">
+            <button id="downloadBtn" class="download-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                </svg>
+                Download
+            </button>
+            
+            <div class="queue-status" id="queueStatus" style="display: none;">
+                <p>Queue Status: <span id="queueStatusText">Waiting...</span></p>
+            </div>
+            
+            <div class="progress" id="progress" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <span id="progressText">0%</span>
+            </div>
+        </div>
+        
+        <div class="error" id="error" style="display: none;">
+            <p id="errorMessage">An error occurred</p>
+            <button id="retryBtn" class="retry-btn">Retry</button>
+        </div>
+        
+        <div class="footer">
+            <div class="footer-content">
+                <p>Powered by yt-dlp</p>
+                <button id="historyBtn" class="history-btn" onclick="openHistory()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.01.01L7 12H5c0-4.42 3.58-8 8-8s8 3.58 8 8-3.58 8-8 8c-1.17 0-2.26-.25-3.26-.68-.26-.09-.49-.26-.69-.47-.2-.21-.31-.47-.31-.75 0-.55.45-1 1-1h.01c.28 0 .53.11.73.31.21.21.42.38.66.51.71.31 1.5.47 2.29.47 3.31 0 6-2.69 6-6s-2.69-6-6-6z"/>
+                    </svg>
+                    History
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>

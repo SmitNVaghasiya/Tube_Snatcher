@@ -1,6 +1,9 @@
-# Video Downloader - Tube Snatcher
+# YouTube Video Downloader - Tube Snatcher
 
 Tube Snatcher is a powerful tool that allows users to download audio and videos from YouTube at the highest resolution for free.
+
+![Screenshot 2025-04-27 175035](https://github.com/user-attachments/assets/4183db2c-c86a-4408-8863-7edcf6468b30)
+
 
 ## Features
 
@@ -46,7 +49,7 @@ YouTube has strict anti-bot measures, making it difficult to download videos dir
    python app.py
    ```
 4. **Access the Web Interface**
-   Open `http://127.0.0.1:5000` in your browser.
+   Open `http://127.0.0.1:8000` in your browser.
 
 ## Deployment Notes
 
