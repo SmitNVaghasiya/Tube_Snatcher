@@ -4,7 +4,6 @@ Enhanced download manager with better queue handling and progress tracking
 """
 
 import asyncio
-import os
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -19,29 +18,20 @@ class DownloadManager:
     def __init__(self):
         self.download_queue: List[DownloadTask] = []
         self.active_downloads: List[DownloadTask] = []
-        self.completed_tasks: List[DownloadTask] = []  # Keep recent completed tasks
+        self.completed_tasks: List[DownloadTask] = []
         self.downloader = VideoDownloader()
-        self.shutdown_timer = None
         self.start_time = datetime.now()
         self._processing = False
-    
+
     async def start(self):
         """Start the download manager"""
         print("📥 Download Manager started")
-        self._start_shutdown_timer()
-    
+
     async def stop(self):
         """Stop the download manager and cleanup"""
         print("📥 Download Manager stopping...")
-        
-        # Cancel shutdown timer
-        if self.shutdown_timer:
-            self.shutdown_timer.cancel()
-        
-        # Cancel all active downloads
         for task in self.active_downloads.copy():
             await self.cancel_task(task.id)
-        
         print("📥 Download Manager stopped")
     
     async def add_to_queue(self, request: DownloadRequest) -> str:
@@ -49,16 +39,11 @@ class DownloadManager:
         task = DownloadTask(request)
         self.download_queue.append(task)
         
-        print(f"➕ Added task {task.id} to queue")
-        print(f"📊 Queue size: {len(self.download_queue)}")
-        
-        # Start processing if not already processing
+        print(f"➕ Added task {task.id} to queue. Size: {len(self.download_queue)}")
+
         if not self._processing:
             asyncio.create_task(self._process_queue())
-        
-        # Reset shutdown timer
-        self._start_shutdown_timer()
-        
+
         return task.id
     
     async def _process_queue(self):
@@ -85,10 +70,6 @@ class DownloadManager:
             
         finally:
             self._processing = False
-            
-            # Start shutdown timer if no more work
-            if not self.download_queue and not self.active_downloads:
-                self._start_shutdown_timer()
     
     async def _download_task(self, task: DownloadTask):
         """Execute a single download task"""
@@ -219,22 +200,5 @@ class DownloadManager:
         print(f"🧹 Cleared {cleared_count} queued downloads")
         return cleared_count
     
-    def _start_shutdown_timer(self):
-        """Start or restart the shutdown timer"""
-        if self.shutdown_timer:
-            self.shutdown_timer.cancel()
-        
-        self.shutdown_timer = asyncio.create_task(self._shutdown_after_delay())
-    
-    async def _shutdown_after_delay(self):
-        """Shutdown server after delay if no activity"""
-        await asyncio.sleep(settings.SHUTDOWN_DELAY)
-        
-        # Check if there's still no activity
-        if not self.download_queue and not self.active_downloads:
-            print(f"⏰ No activity for {settings.SHUTDOWN_DELAY}s, shutting down...")
-            os._exit(0)
-    
     def get_current_time(self) -> str:
-        """Get current timestamp"""
         return datetime.now().isoformat()

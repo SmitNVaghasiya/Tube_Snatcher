@@ -1,15 +1,21 @@
 document.addEventListener('DOMContentLoaded', function () {
+
+  // ── State ────────────────────────────────────────────────────────────────
+
   let loadingTimerInterval = null;
   let playlistTotalCount = 0;
   let availableResolutions = new Set();
+  const activePollers = {};   // task_id -> interval id
 
-  // ── LocalStorage helpers ──────────────────────────────────────────────────
+  // ── LocalStorage ─────────────────────────────────────────────────────────
 
   function saveToLocalStorage() {
     localStorage.setItem('url', document.getElementById('urlInput').value);
     localStorage.setItem('format', document.getElementById('formatSelect').value);
-    localStorage.setItem('videoDescription', document.getElementById('videoDescription').textContent);
-    localStorage.setItem('videoThumbnail', document.getElementById('videoThumbnail').src);
+    const desc = document.getElementById('videoDescription');
+    const thumb = document.getElementById('videoThumbnail');
+    if (desc) localStorage.setItem('videoDescription', desc.textContent);
+    if (thumb) localStorage.setItem('videoThumbnail', thumb.src);
     localStorage.setItem('downloadCardHtml', document.querySelector('.download-card.options').innerHTML);
   }
 
@@ -18,14 +24,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const format = localStorage.getItem('format');
     const desc = localStorage.getItem('videoDescription');
     const thumb = localStorage.getItem('videoThumbnail');
-    const cardHtml = localStorage.getItem('downloadCardHtml');
+    const card = localStorage.getItem('downloadCardHtml');
 
     if (url) document.getElementById('urlInput').value = url;
     if (format) document.getElementById('formatSelect').value = format;
     if (desc) document.getElementById('videoDescription').textContent = desc;
     if (thumb) document.getElementById('videoThumbnail').src = thumb;
-    if (cardHtml) {
-      document.querySelector('.download-card.options').innerHTML = cardHtml;
+    if (card) {
+      document.querySelector('.download-card.options').innerHTML = card;
       document.querySelector('.below-container').classList.remove('hidden');
       toggleDownloadSelectedButton();
     }
@@ -33,13 +39,51 @@ document.addEventListener('DOMContentLoaded', function () {
 
   loadFromLocalStorage();
 
-  // ── UI helpers ────────────────────────────────────────────────────────────
+  // ── Cookie helpers (sessionStorage for security) ─────────────────────────
 
-  function toggleDownloadSelectedButton() {
-    const anyChecked = document.querySelectorAll('.playlist-videos input[type="checkbox"]:checked').length > 0;
-    const btn = document.getElementById('downloadSelectedVideos');
-    if (btn) btn.classList.toggle('hidden', !anyChecked);
+  function getCookies() {
+    return sessionStorage.getItem('yt_cookies') || '';
   }
+
+  function persistCookies(val) {
+    const trimmed = val.trim();
+    if (trimmed) {
+      sessionStorage.setItem('yt_cookies', trimmed);
+      document.getElementById('cookieSavedIndicator').classList.remove('hidden');
+      document.getElementById('cookieBadge').classList.remove('hidden');
+    } else {
+      sessionStorage.removeItem('yt_cookies');
+      document.getElementById('cookieSavedIndicator').classList.add('hidden');
+      document.getElementById('cookieBadge').classList.add('hidden');
+    }
+  }
+
+  // Restore cookies from session on page load
+  const savedCookies = getCookies();
+  if (savedCookies) {
+    document.getElementById('cookieInput').value = savedCookies;
+    document.getElementById('cookieSavedIndicator').classList.remove('hidden');
+    document.getElementById('cookieBadge').classList.remove('hidden');
+  }
+
+  document.getElementById('toggleCookies').addEventListener('click', function () {
+    const panel = document.getElementById('cookiePanel');
+    const expanded = !panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', expanded);
+    this.setAttribute('aria-expanded', String(!expanded));
+    this.classList.toggle('active', !expanded);
+  });
+
+  document.getElementById('cookieInput').addEventListener('input', function () {
+    persistCookies(this.value);
+  });
+
+  document.getElementById('clearCookies').addEventListener('click', function () {
+    document.getElementById('cookieInput').value = '';
+    persistCookies('');
+  });
+
+  // ── UI helpers ───────────────────────────────────────────────────────────
 
   function setDescription(text) {
     document.getElementById('videoDescription').textContent = text;
@@ -53,6 +97,19 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('loadingCircle').style.display = 'none';
     stopLoadingTimer();
     document.getElementById('loadingMessage').style.display = 'none';
+  }
+
+  function toggleDownloadSelectedButton() {
+    const anyChecked = document.querySelectorAll('.playlist-videos input[type="checkbox"]:checked').length > 0;
+    const btn = document.getElementById('downloadSelectedVideos');
+    if (btn) btn.classList.toggle('hidden', !anyChecked);
+  }
+
+  function showSuccessToast(message) {
+    const toast = document.getElementById('successToast');
+    toast.textContent = '✓ ' + message;
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), 4000);
   }
 
   // ── Live elapsed timer ────────────────────────────────────────────────────
@@ -96,6 +153,148 @@ document.addEventListener('DOMContentLoaded', function () {
       });
   }
 
+  // ── Progress card system ──────────────────────────────────────────────────
+
+  function createProgressCard(taskId, title) {
+    const container = document.getElementById('downloadProgressList');
+    container.insertAdjacentHTML('beforeend', `
+      <div class="progress-card" id="progress-${taskId}">
+        <div class="progress-card-header">
+          <span class="progress-title">${title || 'Downloading…'}</span>
+          <button class="cancel-btn" data-task-id="${taskId}" aria-label="Cancel">✕</button>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="fill-${taskId}" style="width:0%"></div>
+        </div>
+        <div class="progress-footer">
+          <span class="progress-pct" id="pct-${taskId}">Queued</span>
+        </div>
+      </div>`);
+    document.getElementById('activeDownloads').classList.remove('hidden');
+  }
+
+  function updateProgressCard(task) {
+    const fill = document.getElementById(`fill-${task.id}`);
+    const pct = document.getElementById(`pct-${task.id}`);
+    const card = document.getElementById(`progress-${task.id}`);
+    if (!fill || !pct || !card) return;
+
+    if (task.status === 'downloading') {
+      fill.style.width = `${task.progress}%`;
+      pct.textContent = `${task.progress}%`;
+    } else if (task.status === 'completed') {
+      fill.style.width = '100%';
+      fill.classList.add('completed');
+      pct.textContent = '✓ Complete';
+      card.classList.add('done');
+      const cancelBtn = card.querySelector('.cancel-btn');
+      if (cancelBtn) cancelBtn.remove();
+    } else if (task.status === 'failed') {
+      fill.classList.add('failed');
+      pct.textContent = `✕ ${task.error || 'Download failed'}`;
+      card.classList.add('failed-card');
+    } else if (task.status === 'cancelled') {
+      pct.textContent = 'Cancelled';
+    }
+  }
+
+  function startProgressPolling(taskId, title) {
+    createProgressCard(taskId, title);
+    activePollers[taskId] = setInterval(function () {
+      fetch(`/task/${taskId}`)
+        .then(r => r.json())
+        .then(task => {
+          updateProgressCard(task);
+          if (['completed', 'failed', 'cancelled'].includes(task.status)) {
+            clearInterval(activePollers[taskId]);
+            delete activePollers[taskId];
+            setTimeout(() => {
+              const card = document.getElementById(`progress-${task.id}`);
+              if (card) card.classList.add('fading');
+              setTimeout(() => {
+                if (card) card.remove();
+                if (!document.getElementById('downloadProgressList').children.length) {
+                  document.getElementById('activeDownloads').classList.add('hidden');
+                }
+              }, 400);
+            }, 3000);
+            refreshHistory();
+            if (task.status === 'completed') {
+              showSuccessToast(`Downloaded: ${task.video_title || 'Video'}`);
+            }
+          }
+        })
+        .catch(() => {
+          clearInterval(activePollers[taskId]);
+          delete activePollers[taskId];
+        });
+    }, 1000);
+  }
+
+  // ── History ───────────────────────────────────────────────────────────────
+
+  function refreshHistory() {
+    fetch('/history')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.history || !data.history.length) {
+          document.getElementById('historySection').classList.add('hidden');
+          return;
+        }
+        document.getElementById('historySection').classList.remove('hidden');
+        const list = document.getElementById('historyList');
+        list.innerHTML = data.history.slice(0, 20).map(item => {
+          const dateStr = item.completion_time || item.created_at;
+          const timeLabel = dateStr ? new Date(dateStr).toLocaleString() : '';
+          const icon = item.status === 'completed' ? '✓' : item.status === 'failed' ? '✕' : '—';
+          const safeTitle = (item.video_title || 'Unknown video')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return `
+            <div class="history-item history-${item.status}">
+              <span class="history-status-icon">${icon}</span>
+              <div class="history-info">
+                <span class="history-title">${safeTitle}</span>
+                <span class="history-meta">${(item.format_type || 'mp4').toUpperCase()} · ${timeLabel}</span>
+              </div>
+            </div>`;
+        }).join('');
+      })
+      .catch(() => {});
+  }
+
+  // Load history on startup
+  refreshHistory();
+
+  document.getElementById('clearHistory').addEventListener('click', function () {
+    document.getElementById('historyList').innerHTML = '';
+    document.getElementById('historySection').classList.add('hidden');
+  });
+
+  // ── Download helper ───────────────────────────────────────────────────────
+
+  function queueDownload(params) {
+    const body = new URLSearchParams(params);
+    const cookies = getCookies();
+    if (cookies) body.append('cookies', cookies);
+
+    return fetch('/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+      .then(r => r.json())
+      .then(response => {
+        if (response.task_id) {
+          startProgressPolling(response.task_id, null);
+          setDescription(response.message);
+        } else if (response.error) {
+          setDescription(`Error: ${response.error}`);
+        }
+        saveToLocalStorage();
+        return response;
+      });
+  }
+
   // ── Core fetch-details ────────────────────────────────────────────────────
 
   function fetchDetails() {
@@ -109,6 +308,7 @@ document.addEventListener('DOMContentLoaded', function () {
         '<div class="playlist-videos"></div>' +
         '<button id="downloadSelectedVideos" class="download-selected hidden">Download Selected Videos</button>';
       document.querySelector('.below-container').classList.add('hidden');
+      document.querySelector('.below-container').classList.remove('playlist-mode');
       availableResolutions.clear();
       playlistTotalCount = 0;
     }
@@ -158,15 +358,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 playlistTotalCount = data.video_count;
                 setDescription(`Playlist: "${data.title}" — ${data.video_count} videos`);
                 document.getElementById('videoThumbnail').src = data.thumbnail || '';
+                document.querySelector('.below-container').classList.add('playlist-mode');
                 startLoadingTimer();
                 document.querySelector('.download-card.options').innerHTML = `
-                  <select id="playlistResolution"><option value="best">Best Quality</option></select>
+                  <select id="playlistResolution" aria-label="Resolution">
+                    <option value="best">Best Quality</option>
+                  </select>
                   <div class="select-videos">
-                    <input type="text" id="videoSelection" placeholder="e.g., 1,4,7-10,15" aria-label="Select video range">
-                    <button id="downloadVideos" aria-label="Download selected videos">Download</button>
+                    <input type="text" id="videoSelection" placeholder="e.g., 1,4,7-10,15" aria-label="Video selection range">
+                    <button id="downloadVideos" aria-label="Download selected">Download</button>
                   </div>
                   <div class="playlist-videos"></div>
-                  <button id="downloadSelectedVideos" class="download-selected hidden" aria-label="Download checked videos">Download Selected Videos</button>`;
+                  <button id="downloadSelectedVideos" class="download-selected hidden" aria-label="Download checked videos">
+                    Download Selected Videos
+                  </button>`;
                 document.querySelector('.below-container').classList.remove('hidden');
 
               } else if (data.type === 'video_update') {
@@ -176,30 +381,31 @@ document.addEventListener('DOMContentLoaded', function () {
                       availableResolutions.add(fmt.format_note);
                   });
                 }
-                const video = data.video;
-                const index = document.querySelectorAll('.playlist-videos .video-box').length;
-                const mins = Math.floor((video.duration || 0) / 60);
-                const secs = ((video.duration || 0) % 60).toString().padStart(2, '0');
-                const duration = video.duration ? `${mins}:${secs}` : 'N/A';
-                const safeTitle = video.title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const v = data.video;
+                const idx = document.querySelectorAll('.playlist-videos .video-box').length;
+                const mins = Math.floor((v.duration || 0) / 60);
+                const secs = ((v.duration || 0) % 60).toString().padStart(2, '0');
+                const dur = v.duration ? `${mins}:${secs}` : 'N/A';
+                const safeTitle = (v.title || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 document.querySelector('.playlist-videos').insertAdjacentHTML('beforeend', `
                   <div class="video-box">
-                    <div class="video-selector" data-index="${index}">
-                      <input type="checkbox" id="video${index}" value="${video.url}" class="video-checkbox" aria-label="${safeTitle}">
-                      <img src="${video.thumbnail || ''}" alt="${safeTitle}" loading="lazy">
-                      <p class="video-title">${index + 1}. ${safeTitle}</p>
+                    <div class="video-selector" data-index="${idx}">
+                      <input type="checkbox" id="video${idx}" value="${v.url}" class="video-checkbox" aria-label="${safeTitle}">
+                      <img src="${v.thumbnail || ''}" alt="${safeTitle}" loading="lazy">
+                      <p class="video-title">${idx + 1}. ${safeTitle}</p>
                     </div>
                     <hr class="divider">
                     <div class="video-info">
-                      <p>Duration: ${duration}</p>
+                      <p>Duration: ${dur}</p>
                       <div class="vertical-divider"></div>
-                      <button class="download-video" data-url="${video.url}" aria-label="Download ${safeTitle}">Download</button>
+                      <button class="download-video" data-url="${v.url}" aria-label="Download ${safeTitle}">Download</button>
                     </div>
                   </div>`);
 
               } else if (data.type === 'video') {
                 setDescription(`Ready: ${data.title}`);
                 document.getElementById('videoThumbnail').src = data.thumbnail || '';
+                document.querySelector('.below-container').classList.remove('playlist-mode');
                 const formatsHtml = data.formats && data.formats.length
                   ? data.formats.map(fmt => `
                       <div class="option">
@@ -241,7 +447,6 @@ document.addEventListener('DOMContentLoaded', function () {
     submitBtn.disabled = true;
     showLoading();
 
-    // Read only the first chunk to get video info, then download best format
     fetch('/fetch_details', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -256,8 +461,7 @@ document.addEventListener('DOMContentLoaded', function () {
         function readFirstVideo({ done, value }) {
           if (done) return null;
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          for (const line of lines) {
+          for (const line of buffer.split('\n')) {
             if (!line.trim()) continue;
             try {
               const d = JSON.parse(line);
@@ -269,165 +473,127 @@ document.addEventListener('DOMContentLoaded', function () {
         return reader.read().then(readFirstVideo);
       })
       .then(response => {
-        if (!response || response.type !== 'video') {
-          hideLoading();
-          submitBtn.disabled = false;
-          return;
-        }
+        hideLoading();
+        submitBtn.disabled = false;
+        if (!response || response.type !== 'video') return;
+
         let bestFormat = response.formats[0];
         if (format === 'mp4') {
-          let maxHeight = 0;
+          let maxH = 0;
           response.formats.forEach(fmt => {
             if (fmt.resolution && fmt.resolution !== 'Audio Only') {
               const h = parseInt(fmt.resolution.split('x')[1]);
-              if (h > maxHeight) { maxHeight = h; bestFormat = fmt; }
+              if (h > maxH) { maxH = h; bestFormat = fmt; }
             }
           });
         }
-        if (!bestFormat) { hideLoading(); submitBtn.disabled = false; return; }
-
-        return fetch('/download', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ url, format_id: bestFormat.format_id, format }),
-        }).then(r => r.json());
-      })
-      .then(downloadResponse => {
-        if (!downloadResponse) return;
-        hideLoading();
-        setDescription(downloadResponse.error ? `Error: ${downloadResponse.error}` : downloadResponse.message);
-        submitBtn.disabled = false;
-        saveToLocalStorage();
+        if (!bestFormat) return;
+        queueDownload({ url, format_id: bestFormat.format_id, format });
       })
       .catch(err => {
         hideLoading();
-        setDescription(`Error: ${err.message}`);
         submitBtn.disabled = false;
+        setDescription(`Error: ${err.message}`);
         saveToLocalStorage();
       });
   });
 
-  // ── Delegated event handlers ──────────────────────────────────────────────
+  // ── Delegated events ──────────────────────────────────────────────────────
 
   document.addEventListener('click', function (e) {
 
-    // Checkbox toggle via row click
+    // Toggle checkbox via row click
     const selector = e.target.closest('.video-selector');
     if (selector && !e.target.matches('input[type="checkbox"]')) {
       const cb = document.getElementById(`video${selector.dataset.index}`);
       if (cb) { cb.checked = !cb.checked; toggleDownloadSelectedButton(); }
     }
-    if (e.target.matches('.video-checkbox')) {
-      toggleDownloadSelectedButton();
+    if (e.target.matches('.video-checkbox')) toggleDownloadSelectedButton();
+
+    // Cancel active download
+    if (e.target.matches('.cancel-btn[data-task-id]')) {
+      const taskId = e.target.dataset.taskId;
+      fetch(`/task/${taskId}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(() => {
+          clearInterval(activePollers[taskId]);
+          delete activePollers[taskId];
+          const card = document.getElementById(`progress-${taskId}`);
+          if (card) {
+            card.classList.add('fading');
+            setTimeout(() => {
+              card.remove();
+              if (!document.getElementById('downloadProgressList').children.length)
+                document.getElementById('activeDownloads').classList.add('hidden');
+            }, 400);
+          }
+        })
+        .catch(() => {});
     }
 
-    // Download individual video from playlist
+    // Download individual playlist video
     if (e.target.matches('.download-video')) {
       const url = e.target.dataset.url;
       const format = document.getElementById('formatSelect').value;
       const resEl = document.getElementById('playlistResolution');
-      const selectedRes = resEl ? resEl.value : 'best';
-      const desiredHeight = selectedRes === 'best' ? 'best' : selectedRes.replace('p', '');
+      const res = resEl ? resEl.value : 'best';
+      const desiredHeight = res === 'best' ? 'best' : res.replace('p', '');
       e.target.disabled = true;
-      showLoading();
-
-      fetch('/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ url, desired_height: desiredHeight, format }),
-      })
-        .then(r => r.json())
-        .then(response => {
-          hideLoading();
-          setDescription(response.error ? `Error: ${response.error}` : response.message);
-          e.target.disabled = false;
-          saveToLocalStorage();
-        })
-        .catch(err => {
-          hideLoading();
-          setDescription(`Download failed: ${err.message}`);
-          e.target.disabled = false;
-          saveToLocalStorage();
-        });
+      queueDownload({ url, desired_height: desiredHeight, format })
+        .then(() => { e.target.disabled = false; });
     }
 
-    // Download specific format
+    // Download specific format (single video)
     if (e.target.matches('.downloadButton')) {
       const url = document.getElementById('urlInput').value.trim();
       if (!url) return;
       const formatId = e.target.dataset.formatId;
       const format = document.getElementById('formatSelect').value;
       e.target.disabled = true;
-      showLoading();
-
-      fetch('/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ url, format_id: formatId, format }),
-      })
-        .then(r => r.json())
-        .then(response => {
-          hideLoading();
-          setDescription(response.error ? `Error: ${response.error}` : response.message);
-          e.target.disabled = false;
-          saveToLocalStorage();
-        })
-        .catch(err => {
-          hideLoading();
-          setDescription(`Download failed: ${err.message}`);
-          e.target.disabled = false;
-          saveToLocalStorage();
-        });
+      queueDownload({ url, format_id: formatId, format })
+        .then(() => { e.target.disabled = false; });
     }
 
-    // Batch download selected playlist videos
+    // Batch download
     if (e.target.matches('#downloadVideos') || e.target.matches('#downloadSelectedVideos')) {
-      const selectedVideos = Array.from(
+      const selected = Array.from(
         document.querySelectorAll('.playlist-videos input[type="checkbox"]:checked')
       ).map(cb => cb.value);
-      if (selectedVideos.length === 0) {
-        alert('Please select at least one video to download.');
-        return;
-      }
+      if (!selected.length) { alert('Please select at least one video to download.'); return; }
       const resEl = document.getElementById('playlistResolution');
-      const selectedRes = resEl ? resEl.value : 'best';
-      const desiredHeight = selectedRes === 'best' ? 'best' : selectedRes.replace('p', '');
+      const res = resEl ? resEl.value : 'best';
+      const desiredHeight = res === 'best' ? 'best' : res.replace('p', '');
       e.target.disabled = true;
-      showLoading();
-      downloadNextVideo(selectedVideos, 0, desiredHeight);
+      downloadNextVideo(selected, 0, desiredHeight, e.target);
     }
   });
 
   // Video range input
   document.addEventListener('input', function (e) {
     if (!e.target.matches('#videoSelection')) return;
-    const selection = e.target.value.trim();
     document.querySelectorAll('.playlist-videos input[type="checkbox"]').forEach(cb => cb.checked = false);
-    if (!selection) { toggleDownloadSelectedButton(); return; }
-    const selectedIndices = new Set();
-    selection.split(',').map(s => s.trim()).forEach(range => {
+    const val = e.target.value.trim();
+    if (!val) { toggleDownloadSelectedButton(); return; }
+    const indices = new Set();
+    val.split(',').map(s => s.trim()).forEach(range => {
       if (range.includes('-')) {
-        const [start, end] = range.split('-').map(Number);
-        for (let i = start - 1; i < end; i++) selectedIndices.add(i);
+        const [a, b] = range.split('-').map(Number);
+        for (let i = a - 1; i < b; i++) indices.add(i);
       } else {
         const n = Number(range) - 1;
-        if (!isNaN(n)) selectedIndices.add(n);
+        if (!isNaN(n) && n >= 0) indices.add(n);
       }
     });
-    selectedIndices.forEach(i => {
-      const cb = document.getElementById(`video${i}`);
-      if (cb) cb.checked = true;
-    });
+    indices.forEach(i => { const cb = document.getElementById(`video${i}`); if (cb) cb.checked = true; });
     toggleDownloadSelectedButton();
   });
 
-  // ── Sequential playlist download ─────────────────────────────────────────
+  // ── Sequential playlist download ──────────────────────────────────────────
 
-  function downloadNextVideo(videos, index, desiredHeight) {
+  function downloadNextVideo(videos, index, desiredHeight, triggerBtn) {
     if (index >= videos.length) {
-      document.querySelectorAll('#downloadVideos, #downloadSelectedVideos').forEach(btn => btn.disabled = false);
-      hideLoading();
-      setDescription(`All ${videos.length} video(s) queued for download.`);
+      if (triggerBtn) triggerBtn.disabled = false;
+      showSuccessToast(`All ${videos.length} video(s) queued for download.`);
       saveToLocalStorage();
       toggleDownloadSelectedButton();
       return;
@@ -436,22 +602,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const format = document.getElementById('formatSelect').value;
     setDescription(`Queuing video ${index + 1} of ${videos.length}…`);
 
-    fetch('/download', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ url, desired_height: desiredHeight, format }),
-    })
-      .then(r => r.json())
-      .then(response => {
-        if (response.error) setDescription(`Error on video ${index + 1}: ${response.error}`);
-        saveToLocalStorage();
-        downloadNextVideo(videos, index + 1, desiredHeight);
-      })
-      .catch(err => {
-        setDescription(`Failed on video ${index + 1}: ${err.message}`);
-        saveToLocalStorage();
-        downloadNextVideo(videos, index + 1, desiredHeight);
-      });
+    queueDownload({ url, desired_height: desiredHeight, format })
+      .then(() => downloadNextVideo(videos, index + 1, desiredHeight, triggerBtn))
+      .catch(() => downloadNextVideo(videos, index + 1, desiredHeight, triggerBtn));
   }
 
   // ── Persist on input ──────────────────────────────────────────────────────
