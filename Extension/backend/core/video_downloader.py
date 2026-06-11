@@ -55,7 +55,7 @@ class VideoDownloader:
             DownloadResult with success status and details
         """
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(
                 self.executor,
                 self._download_video_sync,
@@ -104,6 +104,8 @@ class VideoDownloader:
                 except Exception:
                     pass
         
+        cookie_file_path = None
+
         # Base yt-dlp options
         ydl_opts = {
             'outtmpl': output_template,
@@ -132,7 +134,6 @@ class VideoDownloader:
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }],
-                'prefer_ffmpeg': True,
             })
         else:
             # Video download
@@ -201,9 +202,8 @@ class VideoDownloader:
             )
         
         finally:
-            # Clean up temporary cookie file if it was created
-            if cookies and cookies.strip():
+            if cookie_file_path:
                 try:
                     os.unlink(cookie_file_path)
-                except:
-                    pass  # It's OK if we can't delete the temp file
+                except OSError:
+                    pass
