@@ -7,7 +7,10 @@
     <link rel="stylesheet" type="text/css" href="/static/styles.css" />
   </head>
   <body>
-    <h1>Download Videos at HD resolution</h1>
+    <h1>Tube Snatcher</h1>
+    <p class="tagline">Download YouTube videos &amp; audio — free, fast, HD</p>
+
+    <!-- ── Input form ───────────────────────────────────────────── -->
     <div class="container above-center">
       <form id="downloadForm">
         <div class="input-wrapper">
@@ -16,22 +19,57 @@
             name="url"
             id="urlInput"
             placeholder="Paste YouTube URL here"
+            aria-label="YouTube URL"
             required
           />
-          <select name="format" id="formatSelect" class="format-dropdown">
+          <select name="format" id="formatSelect" class="format-dropdown" aria-label="Download format">
             <option value="mp4">Video (MP4)</option>
             <option value="mp3">Audio (MP3)</option>
           </select>
           <button type="submit" class="button">Download</button>
         </div>
       </form>
+
+      <!-- Cookie auth toggle -->
+      <div class="advanced-toggle">
+        <button type="button" id="toggleCookies" class="cookie-toggle-btn" aria-expanded="false">
+          ⚙ Cookie Auth <span class="cookie-badge hidden" id="cookieBadge">Active</span>
+        </button>
+      </div>
+      <div id="cookiePanel" class="cookie-panel hidden" role="region" aria-label="Cookie authentication">
+        <p class="cookie-hint">
+          Paste YouTube cookies (Netscape format) to download age-restricted or member-only videos.
+          Cookies are stored only for this browser session and never sent to any third party.
+        </p>
+        <textarea
+          id="cookieInput"
+          rows="4"
+          placeholder="# Netscape HTTP Cookie File&#10;.youtube.com TRUE / FALSE 0 CONSENT YES+...&#10;..."
+          aria-label="YouTube cookies"
+          spellcheck="false"
+        ></textarea>
+        <div class="cookie-actions">
+          <span id="cookieSavedIndicator" class="cookie-saved hidden">✓ Cookies active for this session</span>
+          <button type="button" id="clearCookies" class="clear-cookies-btn">Clear</button>
+        </div>
+      </div>
     </div>
 
+    <!-- ── Loading spinner ─────────────────────────────────────── -->
     <div class="loading-container">
       <div class="loading-circle" id="loadingCircle"></div>
       <p class="loading-message" id="loadingMessage"></p>
     </div>
 
+    <!-- ── Active download progress cards ─────────────────────── -->
+    <div id="activeDownloads" class="container progress-container hidden">
+      <div class="section-header">
+        <span class="section-title">Active Downloads</span>
+      </div>
+      <div id="downloadProgressList"></div>
+    </div>
+
+    <!-- ── Video info + formats / playlist ────────────────────── -->
     <div class="container below-container hidden">
       <div class="content">
         <div class="content-card">
@@ -44,12 +82,24 @@
         </div>
         <div class="download-card options">
           <div class="playlist-videos"></div>
-          <button id="downloadSelectedVideos" class="download-selected hidden">
-            Download
+          <button id="downloadSelectedVideos" class="download-selected hidden" aria-label="Download selected videos">
+            Download Selected Videos
           </button>
         </div>
       </div>
     </div>
+
+    <!-- ── Download history ────────────────────────────────────── -->
+    <div id="historySection" class="container history-container hidden">
+      <div class="section-header">
+        <span class="section-title">Recent Downloads</span>
+        <button id="clearHistory" class="clear-btn" aria-label="Clear download history">Clear</button>
+      </div>
+      <div id="historyList"></div>
+    </div>
+
+    <!-- ── Success toast ──────────────────────────────────────── -->
+    <div id="successToast" class="success-toast hidden" role="status" aria-live="polite"></div>
 
     <script src="/static/script.js"></script>
   </body>

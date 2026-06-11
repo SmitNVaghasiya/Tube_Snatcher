@@ -1,6 +1,7 @@
 # app/video_downloader.py
 import os
 import yt_dlp
+import tempfile
 from typing import Callable, Optional
 
 
@@ -10,7 +11,10 @@ def download_video(
     directory: str,
     format_type: str,
     progress_callback: Optional[Callable[[float], None]] = None,
+    cookies: Optional[str] = None,
 ):
+    cookie_file_path = None
+
     def progress_hook(d):
         if progress_callback and d["status"] == "downloading":
             try:
@@ -27,6 +31,17 @@ def download_video(
         "noplaylist": True,
         "progress_hooks": [progress_hook],
     }
+
+    # Cookie support for age-restricted / member-only videos
+    if cookies and cookies.strip():
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+                f.write("# Netscape HTTP Cookie File\n")
+                f.write(cookies.strip())
+                cookie_file_path = f.name
+            ydl_opts["cookiefile"] = cookie_file_path
+        except Exception:
+            pass
 
     if format_type == "mp3":
         ydl_opts.update({
@@ -61,3 +76,9 @@ def download_video(
     except Exception as e:
         print(f"Download error: {e}")
         return None, str(e), None, None
+    finally:
+        if cookie_file_path:
+            try:
+                os.unlink(cookie_file_path)
+            except OSError:
+                pass
