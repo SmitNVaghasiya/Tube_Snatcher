@@ -7,6 +7,14 @@ document.addEventListener('DOMContentLoaded', function () {
   let availableResolutions = new Set();
   const activePollers = {};   // task_id -> interval id
 
+  // Escape everything interpolated into HTML (titles, URLs, thumbnails come from the network).
+  const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC[c]);
+  const isUrl = s => /^https?:\/\/\S+$/.test(s);
+
+  // Keep the local server alive while this page is open (it exits when idle).
+  setInterval(() => fetch('/status').catch(() => {}), 15000);
+
   // ── LocalStorage ─────────────────────────────────────────────────────────
 
   function saveToLocalStorage() {
@@ -160,7 +168,7 @@ document.addEventListener('DOMContentLoaded', function () {
     container.insertAdjacentHTML('beforeend', `
       <div class="progress-card" id="progress-${taskId}">
         <div class="progress-card-header">
-          <span class="progress-title">${title || 'Downloading…'}</span>
+          <span class="progress-title">${esc(title || 'Downloading…')}</span>
           <button class="cancel-btn" data-task-id="${taskId}" aria-label="Cancel">✕</button>
         </div>
         <div class="progress-track">
@@ -247,14 +255,13 @@ document.addEventListener('DOMContentLoaded', function () {
           const dateStr = item.completion_time || item.created_at;
           const timeLabel = dateStr ? new Date(dateStr).toLocaleString() : '';
           const icon = item.status === 'completed' ? '✓' : item.status === 'failed' ? '✕' : '—';
-          const safeTitle = (item.video_title || 'Unknown video')
-            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const safeTitle = esc(item.video_title || 'Unknown video');
           return `
-            <div class="history-item history-${item.status}">
+            <div class="history-item history-${esc(item.status)}">
               <span class="history-status-icon">${icon}</span>
               <div class="history-info">
                 <span class="history-title">${safeTitle}</span>
-                <span class="history-meta">${(item.format_type || 'mp4').toUpperCase()} · ${timeLabel}</span>
+                <span class="history-meta">${esc((item.format_type || 'mp4').toUpperCase())} · ${esc(timeLabel)}</span>
               </div>
             </div>`;
         }).join('');
@@ -295,12 +302,18 @@ document.addEventListener('DOMContentLoaded', function () {
       });
   }
 
+  function fetchDetailsStream(url) {
+    const body = new URLSearchParams({ url });
+    const cookies = getCookies();
+    if (cookies) body.append('cookies', cookies);
+    return fetch('/fetch_details', { method: 'POST', body });
+  }
+
   // ── Core fetch-details ────────────────────────────────────────────────────
 
   function fetchDetails() {
     const url = document.getElementById('urlInput').value.trim();
-    const format = document.getElementById('formatSelect').value;
-    if (!url) return;
+    if (!isUrl(url)) return;
 
     if (localStorage.getItem('url') !== url) {
       document.getElementById('videoThumbnail').src = '';
@@ -317,11 +330,7 @@ document.addEventListener('DOMContentLoaded', function () {
     showLoading();
     document.getElementById('loadingMessage').style.display = 'none';
 
-    fetch('/fetch_details', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ url, format }),
-    })
+    fetchDetailsStream(url)
       .then(response => {
         if (!response.ok) throw new Error(`Server error ${response.status}`);
         const reader = response.body.getReader();
@@ -356,6 +365,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
               if (data.type === 'playlist') {
                 playlistTotalCount = data.video_count;
+                [2160, 1440, 1080, 720, 480, 360, 240, 144].forEach(h => availableResolutions.add(`${h}p`));
                 setDescription(`Playlist: "${data.title}" — ${data.video_count} videos`);
                 document.getElementById('videoThumbnail').src = data.thumbnail || '';
                 document.querySelector('.below-container').classList.add('playlist-mode');
@@ -375,30 +385,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.querySelector('.below-container').classList.remove('hidden');
 
               } else if (data.type === 'video_update') {
-                if (data.video.formats) {
-                  data.video.formats.forEach(fmt => {
-                    if (fmt.format_note && fmt.format_note.endsWith('p'))
-                      availableResolutions.add(fmt.format_note);
-                  });
-                }
                 const v = data.video;
                 const idx = document.querySelectorAll('.playlist-videos .video-box').length;
                 const mins = Math.floor((v.duration || 0) / 60);
                 const secs = ((v.duration || 0) % 60).toString().padStart(2, '0');
                 const dur = v.duration ? `${mins}:${secs}` : 'N/A';
-                const safeTitle = (v.title || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const safeTitle = esc(v.title);
+                const safeUrl = esc(v.url);
                 document.querySelector('.playlist-videos').insertAdjacentHTML('beforeend', `
                   <div class="video-box">
                     <div class="video-selector" data-index="${idx}">
-                      <input type="checkbox" id="video${idx}" value="${v.url}" class="video-checkbox" aria-label="${safeTitle}">
-                      <img src="${v.thumbnail || ''}" alt="${safeTitle}" loading="lazy">
+                      <input type="checkbox" id="video${idx}" value="${safeUrl}" class="video-checkbox" aria-label="${safeTitle}">
+                      <img src="${esc(v.thumbnail)}" alt="${safeTitle}" loading="lazy">
                       <p class="video-title">${idx + 1}. ${safeTitle}</p>
                     </div>
                     <hr class="divider">
                     <div class="video-info">
                       <p>Duration: ${dur}</p>
                       <div class="vertical-divider"></div>
-                      <button class="download-video" data-url="${v.url}" aria-label="Download ${safeTitle}">Download</button>
+                      <button class="download-video" data-url="${safeUrl}" aria-label="Download ${safeTitle}">Download</button>
                     </div>
                   </div>`);
 
@@ -409,8 +414,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 const formatsHtml = data.formats && data.formats.length
                   ? data.formats.map(fmt => `
                       <div class="option">
-                        <span>${fmt.format_note}, ${fmt.resolution}, ${fmt.filesize || 'Size Unknown'}</span>
-                        <button class="downloadButton" data-format-id="${fmt.format_id}" aria-label="Download ${fmt.format_note}">Download</button>
+                        <span>${esc(fmt.format_note)}, ${esc(fmt.resolution)}, ${esc(fmt.filesize || 'Size Unknown')}</span>
+                        <button class="downloadButton" data-format-id="${esc(fmt.format_id)}" aria-label="Download ${esc(fmt.format_note)}">Download</button>
                       </div>`).join('')
                   : "<div class='option'><span>No formats available</span></div>";
                 document.querySelector('.download-card.options').innerHTML = formatsHtml;
@@ -447,11 +452,7 @@ document.addEventListener('DOMContentLoaded', function () {
     submitBtn.disabled = true;
     showLoading();
 
-    fetch('/fetch_details', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ url, format }),
-    })
+    fetchDetailsStream(url)
       .then(r => {
         if (!r.ok) throw new Error(`Server error ${r.status}`);
         const reader = r.body.getReader();

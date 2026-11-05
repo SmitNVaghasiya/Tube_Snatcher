@@ -14,7 +14,7 @@ class DatabaseManager:
     async def connect_to_database(self):
         """Connect to MongoDB"""
         try:
-            self.client = AsyncIOMotorClient(settings.MONGODB_URL)
+            self.client = AsyncIOMotorClient(settings.MONGODB_URI)
             self.db = self.client[settings.DATABASE_NAME]
             
             # Test connection

@@ -1,84 +1,73 @@
-# app/video_downloader.py
-import os
-import yt_dlp
+"""Blocking yt-dlp download; run it in a thread."""
 import tempfile
-from typing import Callable, Optional
+import threading
+from collections.abc import Callable
+from pathlib import Path
+
+import yt_dlp
+from yt_dlp.utils import DownloadCancelled
+
+from .ytdl import base_opts, cookie_file
+
+
+def format_selector(format_type: str, format_id: str | None, height: str | None) -> str:
+    if format_type == "mp3":
+        return "bestaudio/best"
+    if format_id:
+        # A chosen video-only format has no sound: add the best audio. Formats that already
+        # carry audio (or are audio-only) fail the [acodec=none] filter and are used as-is.
+        return f"{format_id}[acodec=none]+bestaudio/{format_id}"
+    if height and height.isdigit():
+        return f"bestvideo[height<={height}]+bestaudio/best[height<={height}]"
+    return "bestvideo+bestaudio/best"
 
 
 def download_video(
     url: str,
-    format_id_or_height,
-    directory: str,
+    selector: str,
+    directory: Path,
     format_type: str,
-    progress_callback: Optional[Callable[[float], None]] = None,
-    cookies: Optional[str] = None,
-):
-    cookie_file_path = None
+    on_progress: Callable[[float], None],
+    cancel: threading.Event,
+    cookies: str | None = None,
+) -> tuple[str, str]:
+    """Returns (final file path, title). Raises on failure or DownloadCancelled."""
 
-    def progress_hook(d):
-        if progress_callback and d["status"] == "downloading":
-            try:
-                total = d.get("total_bytes") or d.get("total_bytes_estimate")
-                if total:
-                    progress_callback((d.get("downloaded_bytes", 0) / total) * 100)
-            except Exception:
-                pass
-
-    ydl_opts = {
-        "outtmpl": os.path.join(directory, "%(title)s.%(ext)s"),
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "progress_hooks": [progress_hook],
-    }
-
-    # Cookie support for age-restricted / member-only videos
-    if cookies and cookies.strip():
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-                f.write("# Netscape HTTP Cookie File\n")
-                f.write(cookies.strip())
-                cookie_file_path = f.name
-            ydl_opts["cookiefile"] = cookie_file_path
-        except Exception:
-            pass
+    def hook(d: dict) -> None:
+        if cancel.is_set():
+            raise DownloadCancelled("cancelled by user")
+        if d["status"] == "downloading":
+            if total := d.get("total_bytes") or d.get("total_bytes_estimate"):
+                on_progress(d.get("downloaded_bytes", 0) / total * 100)
 
     if format_type == "mp3":
-        ydl_opts.update({
-            "format": "bestaudio/best",
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
-        })
+        post = [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}]
+        extra = {}
     else:
-        if not format_id_or_height or format_id_or_height == "best":
-            ydl_opts["format"] = "bestvideo+bestaudio/best"
-        elif str(format_id_or_height).isdigit():
-            h = format_id_or_height
-            ydl_opts["format"] = f"bestvideo[height<={h}]+bestaudio/best[height<={h}]"
-        else:
-            ydl_opts["format"] = format_id_or_height
-        ydl_opts.update({
-            "merge_output_format": "mp4",
-            "postprocessors": [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}],
-            "keepvideo": False,
-        })
+        post = [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}]  # lossless container swap
+        extra = {"merge_output_format": "mp4"}
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    directory.mkdir(parents=True, exist_ok=True)
+    scratch = directory / ".tmp"
+    scratch.mkdir(exist_ok=True)
+    # In-progress files live in a per-download scratch dir that is always removed,
+    # so failed/cancelled downloads leave no .part debris next to the finished files.
+    with (
+        tempfile.TemporaryDirectory(dir=scratch, ignore_cleanup_errors=True) as tmp,
+        cookie_file(cookies) as cf,
+    ):
+        opts = base_opts(cf) | extra | {
+            "format": selector,
+            "paths": {"home": str(directory), "temp": tmp},
+            "outtmpl": "%(title)s.%(ext)s",
+            "noplaylist": True,
+            "noprogress": True,
+            "concurrent_fragment_downloads": 4,
+            "windowsfilenames": True,
+            "progress_hooks": [hook],
+            "postprocessors": post,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            if format_type == "mp3":
-                filename = os.path.splitext(filename)[0] + ".mp3"
-        return filename, None, info.get("title", "Untitled"), info.get("thumbnail", "")
-    except Exception as e:
-        print(f"Download error: {e}")
-        return None, str(e), None, None
-    finally:
-        if cookie_file_path:
-            try:
-                os.unlink(cookie_file_path)
-            except OSError:
-                pass
+            path = (info.get("requested_downloads") or [{}])[0].get("filepath") or ydl.prepare_filename(info)
+    return path, info.get("title") or "Untitled"

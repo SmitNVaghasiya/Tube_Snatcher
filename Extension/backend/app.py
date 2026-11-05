@@ -16,10 +16,13 @@ from core.database import db_manager
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO if not settings.DEBUG else logging.DEBUG,
+    level=logging.INFO if not settings.DEBUG else logging.INFO,  # Changed from logging.DEBUG to logging.INFO
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Reduce pymongo logging level to suppress debug messages
+logging.getLogger('pymongo').setLevel(logging.WARNING)
 
 # Initialize FastAPI app
 app = FastAPI(

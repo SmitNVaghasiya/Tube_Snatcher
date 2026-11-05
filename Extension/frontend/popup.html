@@ -12,6 +12,25 @@
             <div class="status" id="status">Ready</div>
         </div>
         
+        <!-- Quick download buttons for current video-->
+        <div class="quick-download" id="quickDownloadSection">
+            <h3>Download Current Video</h3>
+            <div class="quick-buttons">
+                <button id="videoDownloadBtn" class="quick-btn video-btn" title="Download best quality MP4 video">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    Video (MP4)
+                </button>
+                <button id="audioDownloadBtn" class="quick-btn audio-btn" title="Download best quality MP3 audio">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                    </svg>
+                    Audio (MP3)
+                </button>
+            </div>
+        </div>
+        
         <div class="video-info" id="videoInfo" style="display: none;">
             <div class="thumbnail">
                 <img id="thumbnail" src="" alt="Video thumbnail">
@@ -19,6 +38,15 @@
             <div class="details">
                 <h3 id="videoTitle">Video Title</h3>
                 <p id="videoDuration">Duration: --</p>
+            </div>
+        </div>
+        
+        <!-- Download URL input-->
+        <div class="url-input-section" id="urlInputSection" style="display: none;">
+            <h3>Download from URL</h3>
+            <div class="url-input-container">
+                <input type="text" id="videoUrlInput" placeholder="Paste YouTube URL here...">
+                <button id="downloadUrlBtn" class="download-url-btn">Download</button>
             </div>
         </div>
         

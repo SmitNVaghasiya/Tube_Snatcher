@@ -1,261 +1,147 @@
-# app/main.py
-import os
-import signal
-import time
-import json
+"""Tube Snatcher web app: FastAPI routes, lifespan, idle auto-shutdown."""
 import asyncio
+import json
+import logging
+import os
+import time
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Optional
-from fastapi import FastAPI, Request, Form, HTTPException
+from pathlib import Path
+from typing import Annotated, Literal
+
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from .details_fetcher import fetch_video_info
-from .video_downloader import download_video
+from fastapi.templating import Jinja2Templates
 
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+from .details_fetcher import stream_details
+from .downloads import DownloadManager
+from .ytdl import FFMPEG
 
-# In-memory state
-all_tasks: dict = {}       # task_id -> DownloadTask (for fast lookup)
-download_queue: list = []
-active_downloads: list = []
-download_history: list = []   # last 100 records (newest appended last)
-server_start_time = None
-shutdown_timer = None
+log = logging.getLogger("uvicorn.error")
 
+ROOT = Path(__file__).resolve().parent.parent
+DOWNLOAD_DIR = Path(os.environ.get("TS_DOWNLOAD_DIR", ROOT / "downloads"))
+# Seconds with no requests and no work before the server exits (0 = never). The page pings
+# /status every 15s while open; browsers throttle hidden tabs to ~1/min, hence the margin.
+IDLE_TIMEOUT = int(os.environ.get("TS_IDLE_TIMEOUT", "90"))
 
-class DownloadTask:
-    def __init__(self, url, format_id, desired_height, format_type, cookies=None):
-        self.id = f"task_{int(time.time() * 1000)}"
-        self.url = url
-        self.format_id = format_id
-        self.desired_height = desired_height
-        self.format_type = format_type
-        self.cookies = cookies
-        self.status = "queued"
-        self.progress = 0
-        self.filename = None
-        self.video_title = None
-        self.error = None
-        self.start_time = None
-        self.completion_time = None
-        self.created_at = datetime.now()
+manager = DownloadManager(DOWNLOAD_DIR, workers=int(os.environ.get("TS_WORKERS", "3")))
+templates = Jinja2Templates(directory=ROOT / "templates")
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "url": self.url,
-            "status": self.status,
-            "progress": self.progress,
-            "video_title": self.video_title,
-            "format_type": self.format_type,
-            "error": self.error,
-            "created_at": self.created_at.isoformat(),
-            "start_time": self.start_time.isoformat() if self.start_time else None,
-            "completion_time": self.completion_time.isoformat() if self.completion_time else None,
-        }
+Url = Annotated[str, Form(pattern=r"^https?://\S+$", max_length=2048)]
+Cookies = Annotated[str | None, Form(max_length=200_000)]
 
 
-# ── Queue management ──────────────────────────────────────────────────────────
-
-def start_shutdown_timer():
-    global shutdown_timer
-    if shutdown_timer:
-        shutdown_timer.cancel()
-    shutdown_timer = asyncio.create_task(delayed_shutdown())
-
-
-async def delayed_shutdown():
-    await asyncio.sleep(30)
-    if not download_queue and not active_downloads:
-        print("No activity. Shutting down server…")
-        os.kill(os.getpid(), signal.SIGTERM)
+async def idle_watch(app: FastAPI) -> None:
+    while True:
+        await asyncio.sleep(5)
+        if manager.busy or app.state.streams:
+            app.state.last_activity = time.monotonic()
+        elif time.monotonic() - app.state.last_activity > IDLE_TIMEOUT:
+            log.info("No activity for %ss, shutting down.", IDLE_TIMEOUT)
+            if server := getattr(app.state, "server", None):  # set by main.py
+                server.should_exit = True  # graceful: runs lifespan shutdown
+            return
 
 
-def add_to_queue(url, format_id, desired_height, format_type, cookies=None):
-    task = DownloadTask(url, format_id, desired_height, format_type, cookies)
-    all_tasks[task.id] = task
-    download_queue.append(task)
-    if not active_downloads:
-        asyncio.create_task(process_download_queue())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.started = datetime.now()
+    app.state.last_activity = time.monotonic()
+    app.state.streams = 0  # open /fetch_details streams
+    if not FFMPEG:
+        log.warning("ffmpeg not found: merging and MP3 conversion will fail. Install it or `uv sync`.")
+    manager.start()
+    watcher = asyncio.create_task(idle_watch(app)) if IDLE_TIMEOUT else None
+    yield
+    if watcher:
+        watcher.cancel()
+    await manager.stop()
+
+
+app = FastAPI(title="Tube Snatcher", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+
+
+@app.middleware("http")
+async def touch(request: Request, call_next):
+    request.app.state.last_activity = time.monotonic()
+    return await call_next(request)
+
+
+def _get_task(task_id: str):
+    if not (task := manager.tasks.get(task_id)):
+        raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 
-async def process_download_queue():
-    while download_queue:
-        if len(active_downloads) >= 2:
-            await asyncio.sleep(1)
-            continue
-        task = download_queue.pop(0)
-        active_downloads.append(task)
-        asyncio.create_task(execute_download(task))
-
-
-async def execute_download(task: DownloadTask):
-    try:
-        task.status = "downloading"
-        task.start_time = datetime.now()
-        task.progress = 0
-
-        os.makedirs("temp", exist_ok=True)
-
-        def on_progress(pct: float):
-            task.progress = min(int(pct), 99)
-
-        loop = asyncio.get_running_loop()
-        format_or_height = task.format_id or task.desired_height
-        filename, error, title, _ = await loop.run_in_executor(
-            None,
-            lambda: download_video(
-                task.url, format_or_height, "temp",
-                task.format_type, on_progress, task.cookies
-            ),
-        )
-
-        if error:
-            task.status = "failed"
-            task.error = error
-        else:
-            task.status = "completed"
-            task.filename = filename
-            task.video_title = title
-            task.progress = 100
-            task.completion_time = datetime.now()
-
-    except Exception as e:
-        task.status = "failed"
-        task.error = str(e)
-
-    finally:
-        if task in active_downloads:
-            active_downloads.remove(task)
-
-        # Persist to in-memory history (newest last, capped at 100)
-        download_history.append(task.to_dict())
-        if len(download_history) > 100:
-            download_history.pop(0)
-
-        if not download_queue and not active_downloads:
-            start_shutdown_timer()
-
-
-# ── Routes ────────────────────────────────────────────────────────────────────
-
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/status")
-async def get_status():
+async def status(request: Request):
     return {
         "server_running": True,
-        "queue_size": len(download_queue),
-        "active_downloads": len(active_downloads),
-        "server_uptime": str(datetime.now() - server_start_time) if server_start_time else "0:00:00",
+        "queue_size": len(manager.queued),
+        "active_downloads": len(manager.active),
+        "server_uptime": str(datetime.now() - request.app.state.started),
     }
 
 
 @app.get("/queue")
-async def get_queue():
-    return {
-        "queue": [t.to_dict() for t in download_queue],
-        "active": [t.to_dict() for t in active_downloads],
-    }
+async def queue():
+    return {"queue": [t.to_dict() for t in manager.queued], "active": [t.to_dict() for t in manager.active]}
 
 
 @app.get("/task/{task_id}")
 async def get_task(task_id: str):
-    task = all_tasks.get(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return task.to_dict()
+    return _get_task(task_id).to_dict()
 
 
 @app.delete("/task/{task_id}")
 async def cancel_task(task_id: str):
-    task = all_tasks.get(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.status == "queued":
-        task.status = "cancelled"
-        if task in download_queue:
-            download_queue.remove(task)
-        download_history.append(task.to_dict())
+    task = _get_task(task_id)
+    if manager.cancel(task):
         return {"message": "Task cancelled", "task_id": task_id}
     return {"message": f"Cannot cancel task with status: {task.status}"}
 
 
 @app.get("/history")
-async def get_history():
-    return {"history": list(reversed(download_history))}
+async def history():
+    return {"history": list(reversed(manager.history))}
 
 
 @app.post("/fetch_details")
-async def fetch_details(url: str = Form(...), format: str = Form(default="mp4")):
-    if not url:
-        raise HTTPException(status_code=400, detail="No URL provided")
+async def fetch_details(request: Request, url: Url, cookies: Cookies = None):
+    """NDJSON stream: one JSON object per line (video | playlist + video_update* | error)."""
 
-    async def generate():
-        loop = asyncio.get_running_loop()
+    async def lines():
+        request.app.state.streams += 1
         try:
-            result = await loop.run_in_executor(None, lambda: fetch_video_info(url, format))
+            async for item in stream_details(url, cookies):
+                yield json.dumps(item) + "\n"
         except Exception as e:
             yield json.dumps({"error": str(e)}) + "\n"
-            return
+        finally:
+            request.app.state.streams -= 1
 
-        if result is None:
-            yield json.dumps({"error": "Failed to fetch video details"}) + "\n"
-            return
-
-        if result["type"] == "playlist":
-            yield json.dumps({
-                "type": "playlist",
-                "title": result["title"],
-                "thumbnail": result["thumbnail"],
-                "video_count": len(result["videos"]),
-            }) + "\n"
-            for video in result["videos"]:
-                yield json.dumps({"type": "video_update", "video": video}) + "\n"
-        else:
-            yield json.dumps(result) + "\n"
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(lines(), media_type="application/x-ndjson")
 
 
 @app.post("/download")
 async def download(
-    url: str = Form(...),
-    format_id: str = Form(None),
-    desired_height: str = Form(None),
-    format: str = Form(default="mp4"),
-    cookies: str = Form(None),
+    url: Url,
+    format: Annotated[Literal["mp4", "mp3"], Form()] = "mp4",
+    format_id: Annotated[str | None, Form(pattern=r"^[\w.\-]+$", max_length=64)] = None,
+    desired_height: Annotated[str | None, Form(pattern=r"^(best|\d{3,4})$")] = None,
+    cookies: Cookies = None,
 ):
-    if not url:
-        raise HTTPException(status_code=400, detail="No URL provided")
-
-    task = add_to_queue(url, format_id, desired_height, format, cookies or None)
-    queue_pos = len(download_queue)
-    wait_secs = queue_pos * 60 + len(active_downloads) * 30
-    if wait_secs < 30:
-        wait_str = "starting shortly"
-    elif wait_secs < 120:
-        wait_str = "~1 minute"
-    else:
-        wait_str = f"~{wait_secs // 60} minutes"
-
+    task, position = manager.submit(url, format, format_id, desired_height, cookies or None)
     return {
-        "message": "Download started" if not queue_pos else f"Queued (position {queue_pos})",
+        "message": f"Queued (position {position})" if position else "Download started",
         "task_id": task.id,
-        "queue_position": queue_pos,
-        "estimated_wait": wait_str,
+        "queue_position": position,
     }
-
-
-@app.on_event("startup")
-async def startup_event():
-    global server_start_time
-    server_start_time = datetime.now()
-    print(f"Tube Snatcher started at {server_start_time}")

@@ -45,7 +45,7 @@ TubeSnatcher Backend is a FastAPI-based server application designed to work with
 
 ## Environment Variables
 - `SECRET_KEY`: JWT secret key (generate with `openssl rand -hex 32`)
-- `MONGODB_URL`: MongoDB connection string
+- `MONGODB_URI`: MongoDB connection string
 - `COOKIE_ENCRYPTION_KEY`: Fernet encryption key for cookies
 - `HOST`: Server host (default: 0.0.0.0)
 - `PORT`: Server port (default: 2004)
@@ -61,7 +61,7 @@ TubeSnatcher Backend is a FastAPI-based server application designed to work with
 ### Docker Deployment
 ```bash
 docker build -t tubesnatcher-backend .
-docker run -p 2004:2004 -e MONGODB_URL=your_mongo_url tubesnatcher-backend
+docker run -p 2004:2004 -e MONGODB_URI=your_mongo_url tubesnatcher-backend
 ```
 
 ## Security Considerations

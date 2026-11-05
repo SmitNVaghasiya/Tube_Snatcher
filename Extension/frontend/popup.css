@@ -608,3 +608,112 @@ body {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
 }
+
+/* Quick Download Buttons */
+.quick-download {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    text-align: center;
+}
+
+.quick-download h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: #2b2b2b;
+}
+
+.quick-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.quick-btn {
+    flex: 1;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.quick-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.video-btn {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+}
+
+.video-btn:hover {
+    background: linear-gradient(135deg, #0056b3, #004085);
+}
+
+.audio-btn {
+    background: linear-gradient(135deg, #28a745, #1e7e34);
+    color: white;
+}
+
+.audio-btn:hover {
+    background: linear-gradient(135deg, #1e7e34, #155724);
+}
+
+/* URL Input Section */
+.url-input-section {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.url-input-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: #2b2b2b;
+}
+
+.url-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#videoUrlInput {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+}
+
+#videoUrlInput:focus {
+    outline: none;
+    border-color: #2b2b2b;
+    box-shadow: 0 0 0 2px rgba(43, 43, 43, 0.2);
+}
+
+.download-url-btn {
+    padding: 10px 16px;
+    background: linear-gradient(135deg, #6f42c1, #5a32a3);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.download-url-btn:hover {
+    background: linear-gradient(135deg, #5a32a3, #4a148c);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}

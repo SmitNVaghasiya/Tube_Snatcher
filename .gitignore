@@ -2,3 +2,4 @@
 temp/
 .env
 Tube_Snatcher_Backup.zip
+__pycache__

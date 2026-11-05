@@ -46,6 +46,16 @@ document.addEventListener('DOMContentLoaded', async function() {
     const retryBtn = document.getElementById('retryBtn');
     const queueStatus = document.getElementById('queueStatus');
     
+    // Quick download buttons
+    const videoDownloadBtn = document.getElementById('videoDownloadBtn');
+    const audioDownloadBtn = document.getElementById('audioDownloadBtn');
+    const quickDownloadSection = document.getElementById('quickDownloadSection');
+    
+    // URL input section
+    const urlInputSection = document.getElementById('urlInputSection');
+    const videoUrlInput = document.getElementById('videoUrlInput');
+    const downloadUrlBtn = document.getElementById('downloadUrlBtn');
+    
     // Download location elements
     const defaultLocation = document.getElementById('defaultLocation');
     const customLocation = document.getElementById('customLocation');
@@ -73,32 +83,118 @@ document.addEventListener('DOMContentLoaded', async function() {
     await loadDownloadHistory();
 
     async function init() {
-        // Get current video info from storage
-        const result = await chrome.storage.local.get(['currentVideo']);
-        if (result.currentVideo) {
-            currentVideo = result.currentVideo;
-            displayVideoInfo(currentVideo);
-            
-            // Check if it's a playlist URL
-            if (currentVideo.url.includes('list=')) {
-                await fetchPlaylistDetails(currentVideo.url);
-            } else {
+        // Always show the quick download section first
+        showSection(quickDownloadSection);
+        
+        // Always show the URL input section below quick download buttons
+        showSection(urlInputSection);
+
+        // Try to get video info from the current YouTube tab
+        try {
+            const response = await chrome.runtime.sendMessage({action: 'getCurrentVideoInfo'});
+            if (response.success && response.videoInfo) {
+                currentVideo = response.videoInfo;
+                // Store in local storage for potential use by content scripts
+                await chrome.storage.local.set({currentVideo: currentVideo});
+                
                 // Get authentication token first
                 await ensureAuthToken();
                 
-                // Then fetch video formats
-                await fetchVideoFormats(currentVideo.url);
+                displayVideoInfo(currentVideo);
+                
+                // Check if it's a playlist URL
+                if (currentVideo.url.includes('list=')) {
+                    await fetchPlaylistDetails(currentVideo.url);
+                } else {
+                    // Fetch video formats
+                    await fetchVideoFormats(currentVideo.url);
+                }
+                
+                showSection(formatSelection);
+                showSection(downloadLocation);
+                showSection(downloadSection);
+                status.textContent = 'Ready to download';
+            } else {
+                // If no YouTube tab found, check for stored video info as fallback
+                const result = await chrome.storage.local.get(['currentVideo']);
+                if (result.currentVideo) {
+                    currentVideo = result.currentVideo;
+                    displayVideoInfo(currentVideo);
+                    
+                    if (currentVideo.url.includes('list=')) {
+                        await fetchPlaylistDetails(currentVideo.url);
+                    } else {
+                        // Get authentication token first
+                        await ensureAuthToken();
+                        
+                        // Then fetch video formats
+                        await fetchVideoFormats(currentVideo.url);
+                    }
+                    
+                    showSection(formatSelection);
+                    showSection(downloadLocation);
+                    showSection(downloadSection);
+                    status.textContent = 'Ready to download';
+                } else {
+                    status.textContent = 'Go to a YouTube video page for quick download, or enter URL below.';
+                    // Still try to ensure auth token is available
+                    await ensureAuthToken();
+                }
             }
-            
-            showSection(formatSelection);
-            showSection(downloadLocation);
-            showSection(downloadSection);
-            status.textContent = 'Ready to download';
-        } else {
-            status.textContent = 'No video selected. Go to a YouTube video page and click the Download button.';
+        } catch (error) {
+            console.error('Error getting current video info:', error);
+            // Fallback to stored video info
+            const result = await chrome.storage.local.get(['currentVideo']);
+            if (result.currentVideo) {
+                currentVideo = result.currentVideo;
+                displayVideoInfo(currentVideo);
+                
+                if (currentVideo.url.includes('list=')) {
+                    await fetchPlaylistDetails(currentVideo.url);
+                } else {
+                    await ensureAuthToken();
+                    await fetchVideoFormats(currentVideo.url);
+                }
+                
+                showSection(formatSelection);
+                showSection(downloadLocation);
+                showSection(downloadSection);
+                status.textContent = 'Ready to download';
+            } else {
+                status.textContent = 'Go to a YouTube video page for quick download, or enter URL below.';
+                await ensureAuthToken();
+            }
         }
 
-        // Add event listeners
+        // Show quick download section as the first section
+        showSection(quickDownloadSection);
+        
+        // Show URL input section below quick download buttons
+        showSection(urlInputSection);
+
+        // Add event listeners for quick download buttons
+        if (videoDownloadBtn) {
+            videoDownloadBtn.addEventListener('click', () => handleQuickDownload('mp4'));
+        }
+        
+        if (audioDownloadBtn) {
+            audioDownloadBtn.addEventListener('click', () => handleQuickDownload('mp3'));
+        }
+        
+        // Add event listeners for URL download
+        if (downloadUrlBtn) {
+            downloadUrlBtn.addEventListener('click', handleUrlDownload);
+        }
+        
+        if (videoUrlInput) {
+            videoUrlInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    handleUrlDownload();
+                }
+            });
+        }
+
+        // Add event listeners for regular download
         downloadBtn.addEventListener('click', handleDownload);
         retryBtn.addEventListener('click', init);
         
@@ -116,6 +212,240 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         // Load saved location preference
         await loadLocationPreference();
+    }
+    
+    // Handle quick download (MP4 or MP3 with best quality)
+    async function handleQuickDownload(formatType) {
+        let videoToDownload = currentVideo;
+        
+        if (!videoToDownload) {
+            // Try to get current video one more time
+            try {
+                const response = await chrome.runtime.sendMessage({action: 'getCurrentVideoInfo'});
+                if (response.success && response.videoInfo) {
+                    videoToDownload = response.videoInfo;
+                    await chrome.storage.local.set({currentVideo: videoToDownload});
+                } else {
+                    status.textContent = 'Please go to a YouTube video page first.';
+                    return;
+                }
+            } catch (error) {
+                status.textContent = 'Please go to a YouTube video page first.';
+                return;
+            }
+        }
+        
+        status.textContent = `Starting download: ${formatType.toUpperCase()}...`;
+        
+        try {
+            console.log('Attempting quick download for:', videoToDownload.url);
+            console.log('Format type:', formatType);
+            
+            // Extract cookies for the current YouTube session
+            const cookies = await extractYouTubeCookies();
+            console.log('Extracted cookies:', cookies ? 'Found cookies' : 'No cookies found');
+            
+            // Prepare download data with best quality settings
+            const downloadData = {
+                url: videoToDownload.url,
+                format_id: 'best', // Use 'best' for best quality
+                format_type: formatType,
+                cookies: cookies,
+                download_location: selectedLocation === 'custom' ? customPath.value.trim() : undefined
+            };
+
+            console.log('Sending download request to:', getApiUrl('DOWNLOAD'));
+            console.log('Download data:', downloadData);
+            
+            // Send download request to backend with authentication
+            const response = await fetch(getApiUrl('DOWNLOAD'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify(downloadData)
+            });
+
+            console.log('Response status:', response.status);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Download API error:', errorText);
+                const errorData = JSON.parse(errorText);
+                throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log('Download result:', result);
+            
+            if (result.success) {
+                status.textContent = `✓ Download started: ${result.message}`;
+                
+                // Update UI to show completion
+                if (progress) {
+                    progress.style.display = 'block';
+                    if (progressFill) progressFill.style.width = '100%';
+                    if (progressText) progressText.textContent = '100% - Completed';
+                }
+                
+                // Reset after a few seconds
+                setTimeout(() => {
+                    if (progress) progress.style.display = 'none';
+                    status.textContent = 'Download completed!';
+                }, 3000);
+            } else {
+                throw new Error(result.message || 'Download failed');
+            }
+            
+        } catch (error) {
+            console.error('Quick download error:', error);
+            status.textContent = `Error: ${error.message}`;
+            showError(error.message);
+        }
+    }
+    
+    // Handle URL download
+    async function handleUrlDownload() {
+        const url = videoUrlInput.value.trim();
+        
+        if (!url) {
+            status.textContent = 'Please enter a YouTube URL';
+            videoUrlInput.focus();
+            return;
+        }
+        
+        // Validate URL
+        if (!validateYouTubeUrl(url)) {
+            status.textContent = 'Please enter a valid YouTube URL';
+            videoUrlInput.focus();
+            return;
+        }
+        
+        status.textContent = 'Starting download from URL...';
+        
+        try {
+            console.log('Attempting download from URL:', url);
+            
+            // For URL downloads, we need to extract cookies from the domain of the URL
+            // We'll use the stored cookies for YouTube in general
+            const cookies = await extractYouTubeCookies();
+            console.log('Extracted cookies for URL download:', cookies ? 'Found cookies' : 'No cookies found');
+            
+            // Determine format type - we could add a selector for this
+            // For now, default to video format
+            const formatType = 'mp4';
+            
+            // Prepare download data with best quality settings
+            const downloadData = {
+                url: url,
+                format_id: 'best', // Use 'best' for best quality
+                format_type: formatType,
+                cookies: cookies,
+                download_location: selectedLocation === 'custom' ? customPath.value.trim() : undefined
+            };
+
+            console.log('Sending URL download request to:', getApiUrl('DOWNLOAD'));
+            console.log('Download data for URL:', downloadData);
+
+            // Send download request to backend with authentication
+            const response = await fetch(getApiUrl('DOWNLOAD'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify(downloadData)
+            });
+
+            console.log('URL download response status:', response.status);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('URL download API error:', errorText);
+                const errorData = JSON.parse(errorText);
+                throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log('URL download result:', result);
+            
+            if (result.success) {
+                status.textContent = `✓ Download started: ${result.message}`;
+                
+                // Clear the URL input
+                videoUrlInput.value = '';
+                
+                // Update UI to show completion
+                if (progress) {
+                    progress.style.display = 'block';
+                    if (progressFill) progressFill.style.width = '100%';
+                    if (progressText) progressText.textContent = '100% - Completed';
+                }
+                
+                // Reset after a few seconds
+                setTimeout(() => {
+                    if (progress) progress.style.display = 'none';
+                    status.textContent = 'Download from URL completed!';
+                }, 3000);
+            } else {
+                throw new Error(result.message || 'Download failed');
+            }
+            
+        } catch (error) {
+            console.error('URL download error:', error);
+            status.textContent = `Error: ${error.message}`;
+            showError(error.message);
+        }
+    }
+    
+    // Helper function to validate YouTube URL
+    function validateYouTubeUrl(url) {
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/)|youtu\.be\/)[\w-]+/;
+        return youtubeRegex.test(url);
+    }
+    
+    // Extract cookies from browser for the current YouTube session
+    async function extractYouTubeCookies() {
+        try {
+            // Get all YouTube cookies
+            const cookies = await chrome.cookies.getAll({
+                domain: '.youtube.com'
+            });
+            
+            const wwwCookies = await chrome.cookies.getAll({
+                domain: 'www.youtube.com'
+            });
+            
+            // Merge and deduplicate
+            const allCookies = [...cookies, ...wwwCookies];
+            const uniqueCookies = Array.from(
+                new Map(allCookies.map(c => [c.name, c])).values()
+            );
+            
+            if (uniqueCookies.length === 0) {
+                throw new Error('No YouTube cookies found. Please ensure you are logged in to YouTube.');
+            }
+            
+            // Convert to Netscape format for yt-dlp
+            const cookieString = uniqueCookies.map(cookie => {
+                return [
+                    cookie.domain.startsWith('.') ? cookie.domain : '.' + cookie.domain,
+                    cookie.hostOnly ? 'FALSE' : 'TRUE',
+                    cookie.path,
+                    cookie.secure ? 'TRUE' : 'FALSE',
+                    cookie.expirationDate ? Math.floor(cookie.expirationDate) : '0',
+                    cookie.name,
+                    cookie.value
+                ].join('\t');
+            }).join('\n');
+            
+            return cookieString;
+            
+        } catch (error) {
+            console.error('Error extracting cookies:', error);
+            throw new Error('Failed to extract YouTube cookies. Please ensure you are logged in to YouTube.');
+        }
     }
 
     function displayVideoInfo(video) {
