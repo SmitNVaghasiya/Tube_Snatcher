@@ -3,6 +3,7 @@
 Enhanced download manager with better queue handling and progress tracking
 """
 
+import logging
 import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
@@ -11,6 +12,8 @@ from pathlib import Path
 from core.models import DownloadTask, DownloadRequest, TaskStatus, QueueStatus
 from core.video_downloader import VideoDownloader
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 
 class DownloadManager:
     """Manages download queue and active downloads"""
@@ -25,21 +28,21 @@ class DownloadManager:
 
     async def start(self):
         """Start the download manager"""
-        print("📥 Download Manager started")
+        logger.info("Download Manager started")
 
     async def stop(self):
         """Stop the download manager and cleanup"""
-        print("📥 Download Manager stopping...")
+        logger.info("Download Manager stopping...")
         for task in self.active_downloads.copy():
             await self.cancel_task(task.id)
-        print("📥 Download Manager stopped")
+        logger.info("Download Manager stopped")
     
     async def add_to_queue(self, request: DownloadRequest) -> str:
         """Add download task to queue"""
         task = DownloadTask(request)
         self.download_queue.append(task)
         
-        print(f"➕ Added task {task.id} to queue. Size: {len(self.download_queue)}")
+        logger.info(f"Added task {task.id} to queue. Size: {len(self.download_queue)}")
 
         if not self._processing:
             asyncio.create_task(self._process_queue())
@@ -77,7 +80,7 @@ class DownloadManager:
             task.status = TaskStatus.DOWNLOADING
             task.start_time = datetime.now()
             
-            print(f"⬇️  Starting download: {task.id}")
+            logger.info(f"Starting download: {task.id}")
             
             # Get download directory
             download_dir = settings.get_download_directory(task.download_location)
@@ -104,16 +107,16 @@ class DownloadManager:
                 task.file_size = result.file_size
                 task.completion_time = datetime.now()
                 
-                print(f"✅ Download completed: {task.id} -> {result.filename}")
+                logger.info(f"Download completed: {task.id} -> {result.filename}")
             else:
                 task.status = TaskStatus.FAILED
                 task.error = result.error
-                print(f"❌ Download failed: {task.id} -> {result.error}")
+                logger.error(f"Download failed: {task.id} -> {result.error}")
                 
         except Exception as e:
             task.status = TaskStatus.FAILED
             task.error = str(e)
-            print(f"❌ Download error: {task.id} -> {e}")
+            logger.error(f"Download error: {task.id} -> {e}")
         
         finally:
             # Move to completed tasks and remove from active
@@ -174,31 +177,17 @@ class DownloadManager:
                 self.download_queue.remove(task)
                 task.status = TaskStatus.CANCELLED
                 self.completed_tasks.append(task)
-                print(f"🚫 Cancelled queued task: {task_id}")
+                logger.info(f"Cancelled queued task: {task_id}")
                 return True
         
         # Check active tasks (harder to cancel, but mark as cancelled)
         for task in self.active_downloads:
             if task.id == task_id:
                 task.status = TaskStatus.CANCELLED
-                print(f"🚫 Marked active task as cancelled: {task_id}")
+                logger.info(f"Marked active task as cancelled: {task_id}")
                 return True
         
         return False
-    
-    async def clear_queue(self) -> int:
-        """Clear queued downloads"""
-        cleared_count = len(self.download_queue)
-        
-        # Move queued tasks to completed with cancelled status
-        for task in self.download_queue:
-            task.status = TaskStatus.CANCELLED
-            self.completed_tasks.append(task)
-        
-        self.download_queue.clear()
-        
-        print(f"🧹 Cleared {cleared_count} queued downloads")
-        return cleared_count
     
     def get_current_time(self) -> str:
         return datetime.now().isoformat()

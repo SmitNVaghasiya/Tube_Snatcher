@@ -48,7 +48,7 @@ Review of `Web/` (FastAPI + yt-dlp + vanilla JS). Tracks every issue found plus 
 
 ## Open (follow-ups)
 
-- [ ] **19. Resolution fallback is silent.** Playlist dropdown offers a fixed list (2160p…144p) because per-video
+- [x] **19. Resolution fallback is silent.** Playlist dropdown offers a fixed list (2160p…144p) because per-video
   format lookups were too slow. If a video has no stream at the chosen height, yt-dlp quietly downloads the best one
   below it. Show that: after download, report the actual height on the task (`requested_downloads[0]["height"]`)
   and render e.g. "Downloaded at 720p (1080p not available)" in the progress card / history row.

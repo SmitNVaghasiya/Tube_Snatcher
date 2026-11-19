@@ -4,6 +4,29 @@ This file tracks significant development sessions and what was changed in each.
 
 ---
 
+## Session 3 — 2026-11-20 (Over-engineering audit + cleanup)
+
+Ran a ponytail over-engineering audit across the repo, then applied it. Nothing committed.
+
+### Web
+- Download results now report the resolution actually delivered: `download_video` returns the real height, `Task` stores `actual_height`, and `to_dict()`/history include `height` + `actual_height`. The progress card and history row show e.g. "Downloaded at 720p (1080p not available)" (task #19). One assert added to `tests/test_core.py`.
+- Removed the unused `/queue` route, `Web/Errors.md` (superseded by `task.md`), and the `jinja2` dependency (the index page is served with `FileResponse`).
+
+### Extension backend
+- Removed all auto-shutdown leftovers (`SHUTDOWN_DELAY`, banner print, `_start_shutdown_timer` test patch, render.yaml/README/SETUP mentions).
+- Removed dead code: `get_current_user` (it was broken and unused), `get_video_id_from_url`, `/analytics` + `/clear-queue` routes, `DownloadManager.clear_queue`, `DatabaseManager.get_analytics`, unused models (`Token`, `TokenType`, `DownloadRecord`, `UniqueVisitor`, `AnalyticsResponse`), and `_validate_download_location`. Their tests were removed too.
+- `verify_token` no longer re-checks `exp` by hand (python-jose already enforces it).
+- One `cookie_file()` context manager in `core/utils.py` replaces five copy-pasted temp-file blocks and always deletes the file.
+- Merged the duplicate fetch/download routes: `VideoFetcher.fetch_details` and `VideoDownloader.download_playlist` now do the yt-dlp work; the routes only call them. Playlist downloads no longer block the event loop. The legacy `/fetch-details` and `/download` routes were deleted (the popup, content and background scripts never call them).
+- All `print()` calls became module loggers (no emoji). `main.py` is a plain `uvicorn.run`; `app.py` lost the redundant `@app.options` route and uses `allow_origin_regex` (the old `chrome-extension://*` entries never matched). Dropped lower-case env fallbacks and `pydantic-settings`.
+- Tests: 159 pass (was ~179 before removing tests for deleted code; 2 added for `cookie_file`, 2 for `fetch-details-with-cookies`).
+- READMEs/SETUP now say the backend is started manually and never auto-shuts down (an MV3 extension cannot launch processes).
+
+### Not done / left
+See `TODO.md`.
+
+---
+
 ## Session 2 — 2026-06-11 (Features + Polish)
 
 **Branch:** `claude/ui-backend-improvements-62tnzr`  

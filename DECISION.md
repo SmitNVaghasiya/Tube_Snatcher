@@ -20,11 +20,11 @@ Documents the key design decisions made in this project and the reasoning behind
 
 ## ADR-002 — In-memory queue over Celery/Redis
 
-**Decision:** Use a simple Python list + `asyncio.create_task()` for the download queue instead of a dedicated task queue (Celery, RQ, etc.).
+**Decision:** Use an `asyncio.Queue` drained by a fixed pool of worker tasks (`TS_WORKERS`, default 3) instead of a dedicated task queue (Celery, RQ, etc.). Finished tasks are kept in a bounded dict plus a 100-entry history deque.
 
 **Rationale:**
 - The web app is designed to run locally or as a single-user server. Celery/Redis adds significant operational complexity (two extra services, config, monitoring).
-- Max 2 concurrent downloads is enforced by checking `len(active_downloads) < 2` in the processing loop — sufficient for the use case.
+- Workers block on `queue.get()`, so there is no polling loop and no "is the loop running?" race that the earlier list + `asyncio.create_task()` design had. Concurrency is simply the number of workers.
 - State lives only in the running process; a restart clears the queue, which is acceptable.
 
 **Trade-off:** State is lost on server restart. Not horizontally scalable. For a multi-user deployment, switch to Celery + Redis. Tracked in future improvements.

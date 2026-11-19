@@ -15,7 +15,5 @@ services:
         generateValue: true
       - key: MONGODB_URL
         value: mongodb://localhost:27017
-      - key: SHUTDOWN_DELAY
-        value: 3600
       - key: COOKIE_ENCRYPTION_KEY
         generateValue: true

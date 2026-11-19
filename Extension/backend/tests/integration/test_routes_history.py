@@ -45,41 +45,6 @@ async def test_history_returns_items_from_manager(async_client, mock_download_ma
 
 
 # ---------------------------------------------------------------------------
-# POST /api/v1/clear-queue
-# ---------------------------------------------------------------------------
-
-
-async def test_clear_queue_returns_200(async_client):
-    response = await async_client.post("/api/v1/clear-queue")
-    assert response.status_code == 200
-
-
-async def test_clear_queue_response_has_cleared_count(async_client, mock_download_manager):
-    mock_download_manager.clear_queue = AsyncMock(return_value=3)
-    response = await async_client.post("/api/v1/clear-queue")
-    data = response.json()
-    assert "cleared_count" in data
-    assert data["cleared_count"] == 3
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/analytics
-# ---------------------------------------------------------------------------
-
-
-async def test_analytics_returns_200(async_client):
-    response = await async_client.get("/api/v1/analytics")
-    assert response.status_code == 200
-
-
-async def test_analytics_returns_expected_fields(async_client):
-    response = await async_client.get("/api/v1/analytics")
-    data = response.json()
-    assert "total_downloads" in data
-    assert data["total_downloads"] == 42
-
-
-# ---------------------------------------------------------------------------
 # GET /api/v1/download-locations
 # ---------------------------------------------------------------------------
 

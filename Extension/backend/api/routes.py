@@ -5,21 +5,20 @@ Separated from main app for better organization
 """
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import JSONResponse
 from typing import Optional
-import os
+import logging
 from pathlib import Path
 from datetime import datetime, timedelta
-import yt_dlp
-import tempfile
 
 from core.video_fetcher import VideoFetcher
-from core.models import DownloadRequest, VideoInfo, DownloadResponse, DownloadWithCookiesRequest
+from core.models import DownloadResponse, DownloadWithCookiesRequest
 from core.config import settings
-from core.auth import create_access_token, verify_token
-from core.utils import get_client_ip, get_user_agent, validate_youtube_url, clean_cookie_string
+from core.auth import create_access_token
+from core.utils import get_client_ip, get_user_agent, validate_youtube_url
 from core.database import db_manager
 from core.video_downloader import VideoDownloader
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -92,129 +91,13 @@ async def fetch_video_details_with_cookies(
         raise HTTPException(status_code=400, detail="Cookies are required")
     
     try:
-        # Create temporary cookie file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as cookie_file:
-            cookie_file.write("# Netscape HTTP Cookie File\n")
-            cookie_file.write(clean_cookie_string(download_request.cookies))
-            cookie_file_path = cookie_file.name
-
-        try:
-            ydl_opts = {
-                **settings.YTDL_DEFAULT_OPTS,
-                'format': 'bestvideo+bestaudio/best' if download_request.format_type != 'mp3' else 'bestaudio/best',
-                'merge_output_format': 'mp4' if download_request.format_type != 'mp3' else None,
-                'cookiefile': cookie_file_path,
-                'noplaylist': False,  # Allow playlist processing
-                'extract_flat': True,  # Get playlist info without full metadata
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(download_request.url, download=False)
-                
-                if 'entries' in info:  # Playlist detected
-                    # Process playlist
-                    playlist_info = {
-                        'type': 'playlist',
-                        'title': info.get('title', 'Playlist'),
-                        'thumbnail': info.get('thumbnails', [{}])[-1].get('url', '') if info.get('thumbnails') else '',
-                        'video_count': info.get('playlist_count', len(info.get('entries', []))),
-                        'videos': []
-                    }
-                    
-                    # Get detailed info for each video in the playlist
-                    for entry in info.get('entries', []):
-                        video_opts = {
-                            **settings.YTDL_DEFAULT_OPTS,
-                            'format': 'bestvideo+bestaudio/best' if download_request.format_type != 'mp3' else 'bestaudio/best',
-                            'cookiefile': cookie_file_path,
-                            'noplaylist': True,
-                        }
-                        
-                        try:
-                            with yt_dlp.YoutubeDL(video_opts) as video_ydl:
-                                video_info = video_ydl.extract_info(entry.get('url', entry.get('webpage_url')), download=False)
-                                
-                                # Process formats
-                                formats = []
-                                if 'formats' in video_info:
-                                    for fmt in video_info['formats']:
-                                        if 'storyboard' in fmt.get('format_note', '').lower():
-                                            continue
-                                        
-                                        width = fmt.get('width')
-                                        height = fmt.get('height')
-                                        resolution = f"{width}x{height}" if width and height else 'Audio Only' if fmt.get('vcodec') == 'none' else 'N/A'
-                                        filesize = fmt.get('filesize') or fmt.get('filesize_approx', 0)
-                                        filesize_str = f"{round(filesize / (1024 * 1024), 2)} MB" if filesize else "Size Unknown"
-                                        
-                                        format_info = {
-                                            'format_id': fmt.get('format_id'),
-                                            'resolution': resolution,
-                                            'filesize': filesize_str,
-                                            'format_note': fmt.get('format_note', 'N/A'),
-                                            'ext': fmt.get('ext', 'N/A')
-                                        }
-                                        formats.append(format_info)
-                                
-                                playlist_info['videos'].append({
-                                    'title': video_info.get('title', 'Untitled'),
-                                    'url': video_info.get('webpage_url', video_info.get('url')),
-                                    'thumbnail': video_info.get('thumbnail', ''),
-                                    'duration': video_info.get('duration', 0),
-                                    'formats': formats
-                                })
-                        except Exception as e:
-                            # Skip failed videos
-                            continue
-                    
-                    return playlist_info
-                    
-                else:  # Single video
-                    # Handle single video as before
-                    formats = []
-                    if 'formats' in info:
-                        for fmt in info['formats']:
-                            if 'storyboard' in fmt.get('format_note', '').lower():
-                                continue
-                            
-                            width = fmt.get('width')
-                            height = fmt.get('height')
-                            resolution = f"{width}x{height}" if width and height else 'Audio Only' if fmt.get('vcodec') == 'none' else 'N/A'
-                            filesize = fmt.get('filesize') or fmt.get('filesize_approx', 0)
-                            filesize_str = f"{round(filesize / (1024 * 1024), 2)} MB" if filesize else "Size Unknown"
-                            
-                            format_info = {
-                                'format_id': fmt.get('format_id'),
-                                'resolution': resolution,
-                                'filesize': filesize_str,
-                                'format_note': fmt.get('format_note', 'N/A'),
-                                'ext': fmt.get('ext', 'N/A')
-                            }
-                            formats.append(format_info)
-                    
-                    result = {
-                        'type': 'video',
-                        'title': info.get('title', 'Unknown Title'),
-                        'thumbnail': info.get('thumbnail', ''),
-                        'duration': info.get('duration', 0),
-                        'formats': formats,
-                        'uploader': info.get('uploader'),
-                        'upload_date': info.get('upload_date'),
-                        'view_count': info.get('view_count')
-                    }
-                    
-                    return result
-        
-        finally:
-            try:
-                os.unlink(cookie_file_path)
-            except:
-                pass
-        
+        return await VideoFetcher().fetch_details(
+            download_request.url, download_request.format_type, download_request.cookies
+        )
     except Exception as e:
-        print(f"❌ Error fetching video details with cookies: {e}")
+        logger.error(f"Error fetching video details with cookies: {e}")
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Failed to fetch video details: {str(e)}"
         )
 
@@ -305,7 +188,7 @@ async def download_video_with_cookies(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error downloading video with cookies: {e}")
+        logger.error(f"Error downloading video with cookies: {e}")
         
         # Log failed download to database
         download_record = {
@@ -367,68 +250,34 @@ async def download_playlist_with_cookies(
         if not cookies.strip():
             raise HTTPException(status_code=400, detail="Cookies are required")
         
-        # Create temporary cookie file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as cookie_file:
-            cookie_file.write("# Netscape HTTP Cookie File\n")
-            cookie_file.write(clean_cookie_string(cookies))
-            cookie_file_path = cookie_file.name
+        download_dir = settings.get_download_directory(download_location)
+        playlist_title, video_count = await VideoDownloader().download_playlist(
+            playlist_url, download_dir, format_type, cookies
+        )
 
-        try:
-            ydl_opts = {
-                **settings.YTDL_DEFAULT_OPTS,
-                'format': 'bestvideo+bestaudio/best' if format_type != 'mp3' else 'bestaudio/best',
-                'cookiefile': cookie_file_path,
-                'noplaylist': False,  # We want to download the playlist
-                'outtmpl': f'{settings.get_download_directory(download_location)}/%(playlist)s/%(playlist_index)03d - %(title)s.%(ext)s' if format_type != 'mp3' else f'{settings.get_download_directory(download_location)}/%(playlist)s/%(playlist_index)03d - %(title)s.%(ext)s',
-            }
-            
-            if format_type == 'mp3':
-                ydl_opts.update({
-                    'extractaudio': True,
-                    'audioformat': 'mp3',
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': '192',
-                    }],
-                })
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(playlist_url, download=True)
-                
-                playlist_title = info.get('title', 'Playlist')
-                
-                # Log successful download to database
-                download_record = {
-                    "video_url": playlist_url,
-                    "video_title": f"Playlist: {playlist_title}",
-                    "ip_address": client_ip,
-                    "user_agent": user_agent,
-                    "download_timestamp": datetime.utcnow(),
-                    "success": True,
-                    "format_type": format_type,
-                    "format_id": "playlist"
-                }
-                await db_manager.log_download(download_record)
-                
-                return DownloadResponse(
-                    success=True,
-                    message=f"Playlist '{playlist_title}' downloaded successfully ({info.get('playlist_count', 0)} videos)",
-                    task_id="playlist_download",
-                    queue_position=0,
-                    estimated_wait_time="0 seconds",
-                    download_location=str(settings.get_download_directory(download_location)),
-                    video_title=playlist_title
-                )
-        
-        finally:
-            try:
-                os.unlink(cookie_file_path)
-            except:
-                pass
-    
+        await db_manager.log_download({
+            "video_url": playlist_url,
+            "video_title": f"Playlist: {playlist_title}",
+            "ip_address": client_ip,
+            "user_agent": user_agent,
+            "download_timestamp": datetime.utcnow(),
+            "success": True,
+            "format_type": format_type,
+            "format_id": "playlist"
+        })
+
+        return DownloadResponse(
+            success=True,
+            message=f"Playlist '{playlist_title}' downloaded successfully ({video_count} videos)",
+            task_id="playlist_download",
+            queue_position=0,
+            estimated_wait_time="0 seconds",
+            download_location=str(download_dir),
+            video_title=playlist_title
+        )
+
     except Exception as e:
-        print(f"❌ Error downloading playlist: {e}")
+        logger.error(f"Error downloading playlist: {e}")
         
         # Log failed download to database
         download_record = {
@@ -447,116 +296,6 @@ async def download_playlist_with_cookies(
         raise HTTPException(
             status_code=500,
             detail=f"Playlist download failed: {str(e)}"
-        )
-
-# Analytics routes
-@router.get("/analytics")
-async def get_analytics():
-    """Get download analytics"""
-    analytics = await db_manager.get_analytics()
-    return analytics
-
-# Legacy routes (preserving existing functionality)
-@router.post("/fetch-details")
-async def fetch_video_details(
-    url: str = Form(...),
-    format_type: str = Form(default="mp4")
-) -> VideoInfo:
-    """
-    Fetch video details including available formats
-    
-    Args:
-        url: YouTube video URL
-        format_type: Preferred format (mp4/mp3)
-    
-    Returns:
-        VideoInfo: Video details with available formats
-    """
-    if not url.strip():
-        raise HTTPException(status_code=400, detail="URL is required")
-    
-    try:
-        fetcher = VideoFetcher()
-        result = await fetcher.fetch_video_info(url, format_type)
-        
-        if not result:
-            raise HTTPException(
-                status_code=404, 
-                detail="Could not fetch video details. Please check the URL."
-            )
-        
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error fetching video details: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to fetch video details: {str(e)}"
-        )
-
-@router.post("/download")
-async def queue_download(
-    request: Request,
-    url: str = Form(...),
-    format_id: str = Form(...),
-    format_type: str = Form(default="mp4"),
-    download_location: Optional[str] = Form(default=None)
-) -> DownloadResponse:
-    """
-    Queue a video for download
-    
-    Args:
-        url: YouTube video URL
-        format_id: Selected format ID
-        format_type: Download format (mp4/mp3)
-        download_location: Custom download directory (optional)
-    
-    Returns:
-        DownloadResponse: Download task details
-    """
-    if not url.strip() or not format_id.strip():
-        raise HTTPException(
-            status_code=400, 
-            detail="URL and format_id are required"
-        )
-    
-    # Validate download location if provided
-    if download_location and download_location.strip() != "default":
-        if not _validate_download_location(download_location):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid download location. Directory must be writable."
-            )
-    
-    try:
-        download_manager = request.app.state.download_manager
-        
-        download_request = DownloadRequest(
-            url=url.strip(),
-            format_id=format_id.strip(),
-            format_type=format_type,
-            download_location=download_location
-        )
-        
-        task_id = await download_manager.add_to_queue(download_request)
-        queue_position = len(download_manager.download_queue)
-        
-        return DownloadResponse(
-            success=True,
-            message="Download queued successfully",
-            task_id=task_id,
-            queue_position=queue_position,
-            estimated_wait_time="1-3 minutes",
-            download_location=download_location or "default"
-        )
-        
-    except Exception as e:
-        print(f"❌ Error queuing download: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to queue download: {str(e)}"
         )
 
 @router.get("/task/{task_id}")
@@ -589,17 +328,6 @@ async def cancel_task(request: Request, task_id: str):
         raise HTTPException(status_code=404, detail="Task not found or cannot be cancelled")
     
     return {"message": "Task cancelled successfully", "task_id": task_id}
-
-@router.post("/clear-queue")
-async def clear_download_queue(request: Request):
-    """Clear all queued downloads (not active ones)"""
-    download_manager = request.app.state.download_manager
-    cleared_count = await download_manager.clear_queue()
-    
-    return {
-        "message": f"Cleared {cleared_count} queued downloads",
-        "cleared_count": cleared_count
-    }
 
 @router.get("/history")
 async def get_download_history(request: Request, limit: int = 50):
@@ -656,22 +384,3 @@ async def get_common_download_locations():
             continue
     
     return {"locations": valid_locations}
-
-def _validate_download_location(location: str) -> bool:
-    """Validate if download location is writable"""
-    try:
-        path = Path(location)
-        
-        # Create directory if it doesn't exist
-        path.mkdir(parents=True, exist_ok=True)
-        
-        # Test write permissions
-        test_file = path / ".test_write"
-        test_file.write_text("test")
-        test_file.unlink()
-        
-        return True
-        
-    except Exception as e:
-        print(f"⚠️  Invalid download location {location}: {e}")
-        return False

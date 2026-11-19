@@ -28,12 +28,11 @@ TubeSnatcher Backend is a FastAPI-based server application designed to work with
 
 ### API Endpoints
 - `/api/v1/auth/get-token` - Generate authentication token for extension
-- `/api/v1/auth/verify-token` - Verify authentication token
 - `/api/v1/fetch-details-with-cookies` - Get video details with authentication
 - `/api/v1/download-with-cookies` - Download video with cookies
+- `/api/v1/download-playlist` - Download a whole playlist
 - `/api/v1/download-locations` - Get available download locations
 - `/api/v1/history` - Download history
-- `/api/v1/analytics` - Usage analytics
 - `/api/v1/status` - Server health check
 
 ### Tech Stack
@@ -49,7 +48,6 @@ TubeSnatcher Backend is a FastAPI-based server application designed to work with
 - `COOKIE_ENCRYPTION_KEY`: Fernet encryption key for cookies
 - `HOST`: Server host (default: 0.0.0.0)
 - `PORT`: Server port (default: 2004)
-- `SHUTDOWN_DELAY`: Auto-shutdown delay in seconds
 
 ## Deployment
 

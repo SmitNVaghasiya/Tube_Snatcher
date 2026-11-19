@@ -30,8 +30,8 @@ def download_video(
     on_progress: Callable[[float], None],
     cancel: threading.Event,
     cookies: str | None = None,
-) -> tuple[str, str]:
-    """Returns (final file path, title). Raises on failure or DownloadCancelled."""
+) -> tuple[str, str, int | None]:
+    """Returns (final file path, title, actual height). Raises on failure or DownloadCancelled."""
 
     def hook(d: dict) -> None:
         if cancel.is_set():
@@ -70,4 +70,5 @@ def download_video(
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
             path = (info.get("requested_downloads") or [{}])[0].get("filepath") or ydl.prepare_filename(info)
-    return path, info.get("title") or "Untitled"
+    done = (info.get("requested_downloads") or [{}])[0]
+    return path, info.get("title") or "Untitled", done.get("height") or info.get("height")

@@ -1,11 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from fastapi import HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from core.config import settings
-
-security = HTTPBearer()
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None):
     """Create JWT access token"""
@@ -26,23 +22,6 @@ def verify_token(token: str) -> Optional[Dict[str, Any]]:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         
-        # Check if the token is expired
-        exp = payload.get("exp")
-        if exp and datetime.utcnow() > datetime.fromtimestamp(exp):
-            return None
-        
         return payload
     except JWTError:
         return None
-
-def get_current_user(credentials: HTTPAuthorizationCredentials = HTTPBearer()) -> Optional[Dict[str, Any]]:
-    """Get current user from token"""
-    token = credentials.credentials
-    user = verify_token(token)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user

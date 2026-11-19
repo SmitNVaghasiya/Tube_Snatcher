@@ -27,15 +27,6 @@ def fernet_key() -> str:
 def mock_db_manager():
     db = MagicMock()
     db.log_download = AsyncMock()
-    db.get_analytics = AsyncMock(
-        return_value={
-            "total_downloads": 42,
-            "successful_downloads": 40,
-            "failed_downloads": 2,
-            "unique_users": 15,
-            "recent_downloads": [],
-        }
-    )
     return db
 
 
@@ -50,7 +41,6 @@ def mock_download_manager():
     manager.add_to_queue = AsyncMock(return_value="task_12345")
     manager.get_task_by_id = MagicMock(return_value=None)
     manager.cancel_task = AsyncMock(return_value=True)
-    manager.clear_queue = AsyncMock(return_value=0)
     manager.get_download_history = AsyncMock(return_value=[])
     manager.get_queue_status = AsyncMock(
         return_value=QueueStatus(

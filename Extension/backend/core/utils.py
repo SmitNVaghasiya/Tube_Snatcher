@@ -2,7 +2,11 @@ from cryptography.fernet import Fernet
 from core.config import settings
 from fastapi import Request
 import logging
+import contextlib
+import os
 import re
+import tempfile
+from collections.abc import Iterator
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -71,8 +75,19 @@ def clean_cookie_string(cookie_data: str) -> str:
     
     return '\n'.join(cleaned_lines)
 
-def get_video_id_from_url(url: str) -> Optional[str]:
-    """Extract YouTube video ID from URL"""
-    pattern = r'(?:v=|\/)([0-9A-Za-z_-]{11}).*'
-    match = re.search(pattern, url)
-    return match.group(1) if match else None
+@contextlib.contextmanager
+def cookie_file(cookies: Optional[str]) -> Iterator[Optional[str]]:
+    """Write cookies to a temp Netscape file, yield its path (None if no cookies); always delete it."""
+    if not (cookies and cookies.strip()):
+        yield None
+        return
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        f.write("# Netscape HTTP Cookie File\n")
+        f.write(clean_cookie_string(cookies))
+    try:
+        yield f.name
+    finally:
+        try:
+            os.unlink(f.name)
+        except OSError:
+            pass

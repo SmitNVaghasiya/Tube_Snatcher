@@ -181,6 +181,13 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('activeDownloads').classList.remove('hidden');
   }
 
+  // "Downloaded at 720p (1080p not available)" when yt-dlp fell back below the requested height.
+  function fallbackNote(task) {
+    const want = parseInt(task.height, 10);
+    if (!task.actual_height || !want || task.actual_height >= want) return '';
+    return `Downloaded at ${task.actual_height}p (${want}p not available)`;
+  }
+
   function updateProgressCard(task) {
     const fill = document.getElementById(`fill-${task.id}`);
     const pct = document.getElementById(`pct-${task.id}`);
@@ -194,6 +201,8 @@ document.addEventListener('DOMContentLoaded', function () {
       fill.style.width = '100%';
       fill.classList.add('completed');
       pct.textContent = '✓ Complete';
+      const note = fallbackNote(task);
+      if (note) pct.textContent += ` · ${note}`; // textContent: no escaping needed
       card.classList.add('done');
       const cancelBtn = card.querySelector('.cancel-btn');
       if (cancelBtn) cancelBtn.remove();
@@ -261,7 +270,7 @@ document.addEventListener('DOMContentLoaded', function () {
               <span class="history-status-icon">${icon}</span>
               <div class="history-info">
                 <span class="history-title">${safeTitle}</span>
-                <span class="history-meta">${esc((item.format_type || 'mp4').toUpperCase())} · ${esc(timeLabel)}</span>
+                <span class="history-meta">${esc((item.format_type || 'mp4').toUpperCase())} · ${esc(timeLabel)}${fallbackNote(item) ? ' · ' + esc(fallbackNote(item)) : ''}</span>
               </div>
             </div>`;
         }).join('');
@@ -367,7 +376,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 playlistTotalCount = data.video_count;
                 // Fixed list on purpose: asking YouTube for every video's formats took ~1s/video
                 // (5 min for 300 videos). The server picks "best at or below" the chosen height.
-                // TODO(task.md #19): tell the user when a video falls back to a lower height.
                 [2160, 1440, 1080, 720, 480, 360, 240, 144].forEach(h => availableResolutions.add(`${h}p`));
                 setDescription(`Playlist: "${data.title}" — ${data.video_count} videos`);
                 document.getElementById('videoThumbnail').src = data.thumbnail || '';

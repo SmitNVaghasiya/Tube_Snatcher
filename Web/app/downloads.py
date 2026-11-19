@@ -30,6 +30,7 @@ class Task:
     progress: int = 0
     filename: str | None = None
     video_title: str | None = None
+    actual_height: int | None = None  # what yt-dlp really delivered (may be below `height`)
     error: str | None = None
     created_at: datetime = field(default_factory=datetime.now)
     start_time: datetime | None = None
@@ -39,7 +40,8 @@ class Task:
     def to_dict(self) -> dict:
         return {
             "id": self.id, "url": self.url, "status": self.status, "progress": self.progress,
-            "video_title": self.video_title, "format_type": self.format_type, "error": self.error,
+            "video_title": self.video_title, "height": self.height, "actual_height": self.actual_height,
+            "format_type": self.format_type, "error": self.error,
             "created_at": _iso(self.created_at), "start_time": _iso(self.start_time),
             "completion_time": _iso(self.completion_time),
         }
@@ -116,7 +118,7 @@ class DownloadManager:
             task.progress = max(task.progress, min(int(pct), 99))  # monotonic across video+audio streams
 
         try:
-            task.filename, task.video_title = await asyncio.to_thread(
+            task.filename, task.video_title, task.actual_height = await asyncio.to_thread(
                 download_video, task.url, selector, self.directory, task.format_type,
                 on_progress, task.cancel, task.cookies,
             )

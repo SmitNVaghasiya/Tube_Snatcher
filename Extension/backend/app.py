@@ -16,7 +16,7 @@ from core.database import db_manager
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO if not settings.DEBUG else logging.INFO,  # Changed from logging.DEBUG to logging.INFO
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -36,17 +36,8 @@ app = FastAPI(
 # Add CORS middleware for browser extension compatibility
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "chrome-extension://*",  # Chrome extensions
-        "moz-extension://*",     # Firefox extensions
-        "safari-web-extension://*",  # Safari extensions
-        "ms-browser-extension://*",  # Edge extensions
-        "http://127.0.0.1:*",    # Local development
-        "http://localhost:*",    # Local development
-        "https://*.vercel.app",  # Vercel deployments
-        "https://*.render.com",  # Render deployments
-        "https://yourdomain.com",  # Your domain
-    ],
+    # Starlette matches allow_origins literally ("chrome-extension://*" never matched), so use a regex.
+    allow_origin_regex=r"^((chrome|moz|safari-web|ms-browser)-extension://.+|http://(127\.0\.0\.1|localhost)(:\d+)?|https://[\w-]+\.(vercel\.app|render\.com))$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,8 +56,8 @@ app.include_router(router, prefix="/api/v1")
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
-    print(f"🎬 Tube Snatcher Backend v3.0.0 starting at {datetime.now()}")
-    print(f"📂 Default download directory: {settings.DEFAULT_DOWNLOAD_DIR}")
+    logger.info("Tube Snatcher Backend v3.0.0 starting")
+    logger.info("Download directory: %s", settings.DEFAULT_DOWNLOAD_DIR)
     
     # Connect to database
     await db_manager.connect_to_database()
@@ -74,12 +65,12 @@ async def startup_event():
     # Start the download manager
     await download_manager.start()
     
-    print("✅ All systems initialized")
+    logger.info("Startup complete")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    print("🛑 Shutting down Tube Snatcher Backend...")
+    logger.info("Shutting down")
     
     # Stop download manager
     await download_manager.stop()
@@ -87,7 +78,7 @@ async def shutdown_event():
     # Close database connection
     await db_manager.close_database()
     
-    print("✅ All systems shut down")
+    logger.info("Shutdown complete")
 
 @app.get("/")
 async def root():
@@ -99,10 +90,6 @@ async def root():
         "timestamp": datetime.now().isoformat()
     }
 
-@app.options("/{path:path}")
-async def options_handler(path: str):
-    """Handle CORS preflight requests"""
-    return {"message": "CORS preflight handled"}
 
 @app.get("/health")
 async def health_check():

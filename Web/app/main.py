@@ -10,9 +10,8 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from .details_fetcher import stream_details
 from .downloads import DownloadManager
@@ -27,7 +26,6 @@ DOWNLOAD_DIR = Path(os.environ.get("TS_DOWNLOAD_DIR", ROOT / "downloads"))
 IDLE_TIMEOUT = int(os.environ.get("TS_IDLE_TIMEOUT", "90"))
 
 manager = DownloadManager(DOWNLOAD_DIR, workers=int(os.environ.get("TS_WORKERS", "3")))
-templates = Jinja2Templates(directory=ROOT / "templates")
 
 Url = Annotated[str, Form(pattern=r"^https?://\S+$", max_length=2048)]
 Cookies = Annotated[str | None, Form(max_length=200_000)]
@@ -76,9 +74,9 @@ def _get_task(task_id: str):
     return task
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+@app.get("/")
+async def index():
+    return FileResponse(ROOT / "templates" / "index.html")
 
 
 @app.get("/status")
@@ -89,11 +87,6 @@ async def status(request: Request):
         "active_downloads": len(manager.active),
         "server_uptime": str(datetime.now() - request.app.state.started),
     }
-
-
-@app.get("/queue")
-async def queue():
-    return {"queue": [t.to_dict() for t in manager.queued], "active": [t.to_dict() for t in manager.active]}
 
 
 @app.get("/task/{task_id}")

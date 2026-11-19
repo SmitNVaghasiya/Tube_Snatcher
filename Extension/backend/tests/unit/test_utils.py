@@ -7,7 +7,6 @@ from core.utils import (
     decrypt_cookies,
     encrypt_cookies,
     get_client_ip,
-    get_video_id_from_url,
     validate_youtube_url,
 )
 
@@ -39,28 +38,6 @@ def test_validate_youtube_url_rejects_plain_string():
 
 def test_validate_youtube_url_rejects_empty_string():
     assert validate_youtube_url("") is False
-
-
-# ---------------------------------------------------------------------------
-# get_video_id_from_url
-# ---------------------------------------------------------------------------
-
-
-def test_get_video_id_standard_watch():
-    assert get_video_id_from_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
-
-
-def test_get_video_id_short_link():
-    assert get_video_id_from_url("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
-
-
-def test_get_video_id_with_extra_params():
-    url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=120&list=PLabcdef"
-    assert get_video_id_from_url(url) == "dQw4w9WgXcQ"
-
-
-def test_get_video_id_returns_none_for_non_youtube():
-    assert get_video_id_from_url("https://google.com") is None
 
 
 # ---------------------------------------------------------------------------
@@ -167,3 +144,28 @@ def test_decrypt_raises_on_tampered_data():
     tampered = encrypted[:-4] + b"XXXX"
     with pytest.raises(Exception):
         decrypt_cookies(tampered)
+
+
+# ---------------------------------------------------------------------------
+# cookie_file
+# ---------------------------------------------------------------------------
+
+
+def test_cookie_file_writes_netscape_header_and_always_deletes():
+    import os
+
+    from core.utils import cookie_file
+
+    with pytest.raises(RuntimeError):
+        with cookie_file(_VALID_COOKIE_LINE) as path:
+            content = open(path).read()
+            raise RuntimeError("boom")
+    assert content.startswith("# Netscape HTTP Cookie File\n") and _VALID_COOKIE_LINE in content
+    assert not os.path.exists(path)
+
+
+def test_cookie_file_yields_none_without_cookies():
+    from core.utils import cookie_file
+
+    with cookie_file("  ") as path:
+        assert path is None

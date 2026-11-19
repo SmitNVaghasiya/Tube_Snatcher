@@ -58,13 +58,14 @@ def test_input_validation(client):
 def test_download_lifecycle_and_cookie_wipe(client, monkeypatch):
     def fake(url, selector, directory, fmt, on_progress, cancel, cookies):
         on_progress(50)
-        return "x.mp4", "Title"
+        return "x.mp4", "Title", 720
 
     monkeypatch.setattr(downloads, "download_video", fake)
-    r = client.post("/download", data={"url": "https://youtu.be/x", "cookies": "secret"}).json()
+    r = client.post("/download", data={"url": "https://youtu.be/x", "cookies": "secret", "desired_height": "1080"}).json()
     assert r["message"] == "Download started"
     task = wait_for(client, r["task_id"], "completed")
     assert task["video_title"] == "Title" and task["progress"] == 100
+    assert (task["height"], task["actual_height"]) == ("1080", 720)
     assert manager.tasks[r["task_id"]].cookies is None
     assert client.get("/history").json()["history"][0]["id"] == r["task_id"]
 
@@ -73,7 +74,7 @@ def test_cancel_running_and_queued(client, monkeypatch):
     def slow(url, selector, directory, fmt, on_progress, cancel, cookies):
         if cancel.wait(10):
             raise DownloadCancelled("cancelled")
-        return "x.mp4", "Title"
+        return "x.mp4", "Title", None
 
     monkeypatch.setattr(downloads, "download_video", slow)
     n = manager.workers

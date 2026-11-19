@@ -16,15 +16,6 @@ class TaskStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
-class TokenType(str, Enum):
-    access = "access"
-    refresh = "refresh"
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    expires_in: Optional[int] = None
-
 class FormatInfo(BaseModel):
     """Video format information"""
     format_id: str
@@ -92,34 +83,6 @@ class DownloadResponse(BaseModel):
     estimated_wait_time: str
     download_location: str
     video_title: Optional[str] = None
-
-class DownloadRecord(BaseModel):
-    """Download record for database"""
-    video_url: str
-    video_title: Optional[str] = None
-    ip_address: str
-    user_agent: Optional[str] = None
-    download_timestamp: datetime = Field(default_factory=datetime.utcnow)
-    success: bool = True
-    error_message: Optional[str] = None
-    format_type: Optional[str] = "mp4"
-    format_id: Optional[str] = None
-
-class UniqueVisitor(BaseModel):
-    """Unique visitor record for database"""
-    ip_address: str
-    first_seen: datetime = Field(default_factory=datetime.utcnow)
-    last_seen: datetime = Field(default_factory=datetime.utcnow)
-    total_downloads: int = 0
-    user_agent: Optional[str] = None
-
-class AnalyticsResponse(BaseModel):
-    """Analytics response"""
-    total_downloads: int
-    successful_downloads: int
-    failed_downloads: int
-    unique_users: int
-    recent_downloads: List[Dict[str, Any]]
 
 class DownloadTask:
     """Internal download task class"""

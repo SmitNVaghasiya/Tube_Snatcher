@@ -90,42 +90,6 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to update visitor stats: {e}")
     
-    async def get_analytics(self):
-        """Get download analytics"""
-        try:
-            total_downloads = await self.db.downloaded_videos.count_documents({})
-            successful_downloads = await self.db.downloaded_videos.count_documents({"success": True})
-            failed_downloads = total_downloads - successful_downloads
-            unique_users = await self.db.unique_visitors.count_documents({})
-            
-            # Get recent downloads
-            recent_downloads = await self.db.downloaded_videos.find().sort(
-                "download_timestamp", -1
-            ).limit(10).to_list(length=10)
-            
-            # Convert ObjectId to string for serialization
-            for download in recent_downloads:
-                if "_id" in download:
-                    download["_id"] = str(download["_id"])
-            
-            return {
-                "total_downloads": total_downloads,
-                "successful_downloads": successful_downloads,
-                "failed_downloads": failed_downloads,
-                "unique_users": unique_users,
-                "recent_downloads": recent_downloads
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get analytics: {e}")
-            return {
-                "total_downloads": 0,
-                "successful_downloads": 0,
-                "failed_downloads": 0,
-                "unique_users": 0,
-                "recent_downloads": []
-            }
-
 # Global database instance
 db_manager = DatabaseManager()
 

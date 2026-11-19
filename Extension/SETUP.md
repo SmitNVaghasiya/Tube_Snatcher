@@ -21,18 +21,17 @@ pip install -r requirements.txt
 
 1. **Go to any YouTube video**
 2. **Click the dark download button** (appears automatically)
-3. **Extension automatically starts** Python backend server
+3. **Make sure the Python backend is running** (`cd backend && python main.py`)
 4. **Select your preferred quality** (360p to 1440p)
 5. **Download begins automatically** with real progress tracking
 6. **Server shuts down** when all downloads complete
 
 ## 🔧 Features
 
-- ✅ **Automatic server management** - no manual startup needed
+- ✅ **Local backend** - start it once with `python main.py`; it keeps running until you stop it
 - ✅ **High-quality downloads** - uses yt-dlp for best available quality
 - ✅ **Download queue** - handle multiple videos efficiently
 - ✅ **Real progress tracking** - see status in browser
-- ✅ **Smart auto-shutdown** - server closes when idle
 - ✅ **Quality filtering** - optimized for 1920x1080 screens
 
 ## 📁 Extension Files
@@ -40,7 +39,7 @@ pip install -r requirements.txt
 - `content.js` - Adds download button and manages server
 - `popup.js` - Quality selection and progress tracking
 - `popup.html` - User interface
-- `start_server.bat` - Auto-starts Python server
+- `run_server_silent.vbs` - Starts the Python server without a console window (Windows)
 - `requirements.txt` - Python dependencies
 
 ## ⚠️ Troubleshooting
@@ -48,7 +47,7 @@ pip install -r requirements.txt
 ### Extension not working:
 - Make sure Python dependencies are installed
 - Check if port 2004 is available
-- Run `start_server.bat` manually if needed
+- Start the backend manually: `cd backend && python main.py`
 
 ### Downloads not starting:
 - Check browser console for errors

@@ -1,15 +1,12 @@
 # Tube Snatcher Pro - Chrome Extension
 
-A powerful Chrome extension for downloading YouTube videos with automatic Python backend management, high-quality format selection, and intelligent server lifecycle management.
+A powerful Chrome extension for downloading YouTube videos backed by a local Python (FastAPI + yt-dlp) server you start yourself, with high-quality format selection.
 
 ## ✨ Features
 
-### 🚀 **Automatic Server Management**
-- **Smart Startup**: Automatically starts Python backend when visiting YouTube
-- **Session Tracking**: Keeps server running while YouTube tabs are active
-- **Download Protection**: Prevents server shutdown during active downloads
-- **Auto-Recovery**: Automatically restarts server if it goes down
-- **Resource Efficient**: Only runs when needed, auto-shutdowns when idle
+### 🚀 **Local Backend**
+- **Manual start**: run `python main.py` in `backend/` (or `frontend/run_server_silent.vbs` on Windows)
+- **Stays up**: the server runs until you stop it (Ctrl+C); there is no auto-shutdown
 
 ### 📥 **Advanced Download Capabilities**
 - **Format Selection**: Choose from 360p to 1440p quality options
@@ -36,10 +33,9 @@ A powerful Chrome extension for downloading YouTube videos with automatic Python
 - **FastAPI**: Modern, fast web framework for API endpoints
 - **yt-dlp**: Latest YouTube downloader with format support
 - **Async Processing**: Non-blocking download queue management
-- **Auto-Shutdown**: Intelligent server lifecycle management
 
 ### **Security Features**
-- **CORS Protection**: Restricted to Chrome extensions only
+- **CORS**: `allow_origin_regex` allows browser-extension origins, localhost and the Vercel/Render domains (any extension ID is accepted)
 - **Input Validation**: Sanitized user inputs and URL validation
 - **Permission Management**: Minimal required permissions for security
 
@@ -79,25 +75,14 @@ pip install -r requirements.txt
 4. Select your preferred video format and quality
 5. Click "Download" to start the download
 
-## 🔄 Auto-Server Management
+## 🔄 Running the Backend
 
-### **How It Works**
-The extension automatically manages the Python backend server:
+A Chrome extension cannot launch local processes, so start the backend yourself before using the popup:
 
-1. **Detection**: Monitors YouTube tabs and detects when server is needed
-2. **Startup**: Automatically starts server using available startup methods
-3. **Maintenance**: Keeps server running while YouTube sessions are active
-4. **Shutdown**: Gracefully shuts down when no longer needed
+1. **Terminal**: `cd backend && python main.py` (listens on `127.0.0.1:2004` by default; `PORT`/`HOST` env vars override)
+2. **Windows, no console window**: `frontend/run_server_silent.vbs`
 
-### **Startup Methods (Priority Order)**
-1. **VBS Script** (`run_server_silent.vbs`) - Most reliable on Windows
-2. **Batch File** (`start_server.bat`) - Alternative Windows method
-3. **Python Script** (`start_server.py`) - Cross-platform method
-
-### **Server Lifecycle**
-- **Start**: When first YouTube tab is opened
-- **Maintain**: While YouTube tabs are active OR downloads are in progress
-- **Shutdown**: 30 seconds after last YouTube tab closes AND no active downloads
+The server keeps running until stopped manually. The popup shows an error if it cannot reach `/api/v1/status`.
 
 ## 📁 Download Locations
 
@@ -161,7 +146,7 @@ If automatic startup fails:
 2. **Alternative Methods**:
    ```bash
    # From Extension folder
-   python start_server.py
+   cd backend && python main.py
    
    # Or from Extension/app folder
    cd app
@@ -184,9 +169,7 @@ Extension/
 ├── content.js             # YouTube page integration
 ├── background.js          # Server management
 ├── manifest.json          # Extension configuration
-├── start_server.py        # Server launcher
 ├── run_server_silent.vbs  # Windows VBS launcher
-└── start_server.bat       # Windows batch launcher
 ```
 
 ### **Key Components**
@@ -198,8 +181,6 @@ Extension/
 ## 📈 Recent Improvements
 
 ### **v1.0 - Major Overhaul**
-- ✅ **Auto-Server Management**: Automatic startup/shutdown based on usage
-- ✅ **Smart Session Tracking**: Keeps server running while needed
 - ✅ **Enhanced Error Handling**: Better user feedback and error recovery
 - ✅ **Code Optimization**: Removed duplicate code and unnecessary complexity
 - ✅ **Security Improvements**: CORS protection and input validation
@@ -233,4 +214,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Note**: This extension requires a Python backend to function. The extension automatically manages the backend server lifecycle for a seamless user experience.
+**Note**: This extension requires the Python backend in `backend/` to be running.

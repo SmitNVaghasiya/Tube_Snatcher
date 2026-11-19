@@ -17,8 +17,6 @@ def _make_request(
 @pytest.fixture
 def manager(mocker):
     m = DownloadManager()
-    # Disable the shutdown timer so tests don't spawn long-lived asyncio tasks.
-    mocker.patch.object(m, "_start_shutdown_timer")
     # Stub the downloader to prevent real yt-dlp invocations.
     m.downloader = MagicMock()
     return m
@@ -153,39 +151,6 @@ async def test_cancel_active_task_marks_cancelled_without_removing(manager):
     assert result is True
     assert task.status == TaskStatus.CANCELLED
     assert task in manager.active_downloads
-
-
-# ---------------------------------------------------------------------------
-# clear_queue
-# ---------------------------------------------------------------------------
-
-
-async def test_clear_queue_empties_download_queue(manager, mocker):
-    mocker.patch("asyncio.create_task")
-    await manager.add_to_queue(_make_request())
-    await manager.add_to_queue(_make_request(url="https://youtube.com/watch?v=b"))
-    await manager.clear_queue()
-    assert len(manager.download_queue) == 0
-
-
-async def test_clear_queue_returns_count_of_cleared_tasks(manager, mocker):
-    mocker.patch("asyncio.create_task")
-    await manager.add_to_queue(_make_request())
-    await manager.add_to_queue(_make_request(url="https://youtube.com/watch?v=b"))
-    count = await manager.clear_queue()
-    assert count == 2
-
-
-async def test_clear_queue_moves_tasks_to_completed_as_cancelled(manager, mocker):
-    mocker.patch("asyncio.create_task")
-    await manager.add_to_queue(_make_request())
-    await manager.clear_queue()
-    assert all(t.status == TaskStatus.CANCELLED for t in manager.completed_tasks)
-
-
-async def test_clear_empty_queue_returns_zero(manager):
-    count = await manager.clear_queue()
-    assert count == 0
 
 
 # ---------------------------------------------------------------------------

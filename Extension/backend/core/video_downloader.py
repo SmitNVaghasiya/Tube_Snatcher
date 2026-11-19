@@ -3,17 +3,19 @@
 Enhanced video downloader with progress tracking and better error handling
 """
 
+import logging
 import os
 import yt_dlp
 import asyncio
-import tempfile
 from pathlib import Path
 from typing import Callable, Optional
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 
 from core.config import settings
-from core.utils import clean_cookie_string
+from core.utils import cookie_file
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class DownloadResult:
@@ -69,7 +71,7 @@ class VideoDownloader:
             return result
             
         except Exception as e:
-            print(f"❌ Async download error: {e}")
+            logger.error(f"Async download error: {e}")
             return DownloadResult(
                 success=False,
                 error=f"Download failed: {str(e)}"
@@ -104,8 +106,6 @@ class VideoDownloader:
                 except Exception:
                     pass
         
-        cookie_file_path = None
-
         # Base yt-dlp options
         ydl_opts = {
             'outtmpl': output_template,
@@ -114,16 +114,6 @@ class VideoDownloader:
             'noplaylist': True,
             'progress_hooks': [progress_hook],
         }
-        
-        # Add cookies if provided
-        if cookies and cookies.strip():
-            # Create temporary cookie file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as cookie_file:
-                cookie_file.write("# Netscape HTTP Cookie File\n")
-                cookie_file.write(clean_cookie_string(cookies))
-                cookie_file_path = cookie_file.name
-            
-            ydl_opts['cookiefile'] = cookie_file_path
         
         # Configure format-specific options
         if format_type == 'mp3':
@@ -150,60 +140,88 @@ class VideoDownloader:
                 }],
             })
         
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Extract info first
-                info = ydl.extract_info(url, download=False)
+        with cookie_file(cookies) as cookie_path:
+            if cookie_path:
+                ydl_opts['cookiefile'] = cookie_path
+
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    # Extract info first
+                    info = ydl.extract_info(url, download=False)
                 
-                if not info:
+                    if not info:
+                        return DownloadResult(
+                            success=False,
+                            error="Could not extract video information"
+                        )
+                
+                    video_title = info.get('title', 'Untitled')
+                    thumbnail = info.get('thumbnail', '')
+                
+                    # Prepare filename
+                    filename = ydl.prepare_filename(info)
+                    if format_type == 'mp3':
+                        filename = os.path.splitext(filename)[0] + '.mp3'
+                
+                    # Download the video
+                    ydl.download([url])
+                
+                    # Get file size
+                    file_size = None
+                    if os.path.exists(filename):
+                        file_size = os.path.getsize(filename)
+                
                     return DownloadResult(
-                        success=False,
-                        error="Could not extract video information"
+                        success=True,
+                        filename=filename,
+                        video_title=video_title,
+                        thumbnail=thumbnail,
+                        file_size=file_size
                     )
                 
-                video_title = info.get('title', 'Untitled')
-                thumbnail = info.get('thumbnail', '')
-                
-                # Prepare filename
-                filename = ydl.prepare_filename(info)
-                if format_type == 'mp3':
-                    filename = os.path.splitext(filename)[0] + '.mp3'
-                
-                # Download the video
-                ydl.download([url])
-                
-                # Get file size
-                file_size = None
-                if os.path.exists(filename):
-                    file_size = os.path.getsize(filename)
-                
+            except yt_dlp.DownloadError as e:
+                error_msg = str(e)
+                logger.error(f"yt-dlp download error: {error_msg}")
                 return DownloadResult(
-                    success=True,
-                    filename=filename,
-                    video_title=video_title,
-                    thumbnail=thumbnail,
-                    file_size=file_size
+                    success=False,
+                    error=f"Download failed: {error_msg}"
                 )
-                
-        except yt_dlp.DownloadError as e:
-            error_msg = str(e)
-            print(f"❌ yt-dlp download error: {error_msg}")
-            return DownloadResult(
-                success=False,
-                error=f"Download failed: {error_msg}"
-            )
             
-        except Exception as e:
-            error_msg = str(e)
-            print(f"❌ Unexpected download error: {error_msg}")
-            return DownloadResult(
-                success=False,
-                error=f"Unexpected error: {error_msg}"
-            )
-        
-        finally:
-            if cookie_file_path:
-                try:
-                    os.unlink(cookie_file_path)
-                except OSError:
-                    pass
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Unexpected download error: {error_msg}")
+                return DownloadResult(
+                    success=False,
+                    error=f"Unexpected error: {error_msg}"
+                )
+
+    async def download_playlist(
+        self, url: str, directory: Path, format_type: str = "mp4", cookies: Optional[str] = None
+    ) -> tuple[str, int]:
+        """Download a whole playlist into <directory>/<playlist>/NN - title.ext. Returns (title, video count)."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self.executor, self._download_playlist_sync, url, directory, format_type, cookies
+        )
+
+    def _download_playlist_sync(
+        self, url: str, directory: Path, format_type: str, cookies: Optional[str]
+    ) -> tuple[str, int]:
+        ydl_opts = {
+            **settings.YTDL_DEFAULT_OPTS,
+            'format': 'bestaudio/best' if format_type == 'mp3' else 'bestvideo+bestaudio/best',
+            'noplaylist': False,
+            'outtmpl': f'{directory}/%(playlist)s/%(playlist_index)03d - %(title)s.%(ext)s',
+        }
+        if format_type == 'mp3':
+            ydl_opts['postprocessors'] = [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }]
+        with cookie_file(cookies) as cookie_path:
+            if cookie_path:
+                ydl_opts['cookiefile'] = cookie_path
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+        return info.get('title', 'Playlist'), info.get('playlist_count', 0)

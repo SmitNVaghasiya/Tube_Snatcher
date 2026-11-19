@@ -6,5 +6,4 @@ python-jose[cryptography]
 cryptography
 motor
 python-multipart
-pydantic-settings
 python-dotenv

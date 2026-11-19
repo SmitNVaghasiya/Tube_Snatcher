@@ -7,54 +7,6 @@ from core.video_downloader import DownloadResult
 
 
 # ---------------------------------------------------------------------------
-# POST /api/v1/download
-# ---------------------------------------------------------------------------
-
-
-async def test_queue_download_returns_200(async_client):
-    response = await async_client.post(
-        "/api/v1/download",
-        data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "format_id": "137"},
-    )
-    assert response.status_code == 200
-
-
-async def test_queue_download_response_has_task_id(async_client):
-    response = await async_client.post(
-        "/api/v1/download",
-        data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "format_id": "137"},
-    )
-    data = response.json()
-    assert "task_id" in data
-    assert data["task_id"] == "task_12345"
-
-
-async def test_queue_download_response_success_is_true(async_client):
-    response = await async_client.post(
-        "/api/v1/download",
-        data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "format_id": "137"},
-    )
-    assert response.json()["success"] is True
-
-
-async def test_queue_download_rejects_empty_url(async_client):
-    # Empty form fields may be rejected by FastAPI (422) or the route handler (400)
-    response = await async_client.post(
-        "/api/v1/download",
-        data={"url": "   ", "format_id": "137"},
-    )
-    assert response.status_code in (400, 422)
-
-
-async def test_queue_download_rejects_missing_format_id(async_client):
-    response = await async_client.post(
-        "/api/v1/download",
-        data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "format_id": "   "},
-    )
-    assert response.status_code in (400, 422)
-
-
-# ---------------------------------------------------------------------------
 # GET /api/v1/task/{task_id}
 # ---------------------------------------------------------------------------
 
@@ -103,54 +55,6 @@ async def test_cancel_task_returns_404_when_not_found(async_client, mock_downloa
     mock_download_manager.cancel_task = AsyncMock(return_value=False)
     response = await async_client.delete("/api/v1/task/task_missing")
     assert response.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# POST /api/v1/fetch-details
-# ---------------------------------------------------------------------------
-
-
-async def test_fetch_details_returns_200_with_valid_url(async_client):
-    mock_video_info = VideoInfo(
-        title="Test Video",
-        thumbnail="http://img",
-        duration=300,
-        formats=[],
-    )
-    with patch("api.routes.VideoFetcher") as MockFetcher:
-        MockFetcher.return_value.fetch_video_info = AsyncMock(return_value=mock_video_info)
-        response = await async_client.post(
-            "/api/v1/fetch-details",
-            data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
-        )
-    assert response.status_code == 200
-
-
-async def test_fetch_details_response_contains_title(async_client):
-    mock_video_info = VideoInfo(title="My Test Video", thumbnail="", duration=120, formats=[])
-    with patch("api.routes.VideoFetcher") as MockFetcher:
-        MockFetcher.return_value.fetch_video_info = AsyncMock(return_value=mock_video_info)
-        response = await async_client.post(
-            "/api/v1/fetch-details",
-            data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
-        )
-    assert response.json()["title"] == "My Test Video"
-
-
-async def test_fetch_details_returns_404_when_fetcher_returns_none(async_client):
-    with patch("api.routes.VideoFetcher") as MockFetcher:
-        MockFetcher.return_value.fetch_video_info = AsyncMock(return_value=None)
-        response = await async_client.post(
-            "/api/v1/fetch-details",
-            data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
-        )
-    assert response.status_code == 404
-
-
-async def test_fetch_details_returns_400_for_empty_url(async_client):
-    # Whitespace-only URL triggers the route's manual check (400)
-    response = await async_client.post("/api/v1/fetch-details", data={"url": "   "})
-    assert response.status_code in (400, 422)
 
 
 # ---------------------------------------------------------------------------
@@ -233,3 +137,32 @@ async def test_download_with_cookies_failure_path_still_logs_to_db(async_client,
     mock_db_manager.log_download.assert_called_once()
     call_kwargs = mock_db_manager.log_download.call_args[0][0]
     assert call_kwargs["success"] is False
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/fetch-details-with-cookies
+# ---------------------------------------------------------------------------
+
+_COOKIES = ".youtube.com	TRUE	/	FALSE	0	NAME	value"
+
+
+async def test_fetch_details_with_cookies_returns_fetcher_result(async_client):
+    payload = {"type": "video", "title": "T", "formats": []}
+    with patch("api.routes.VideoFetcher") as MockFetcher:
+        MockFetcher.return_value.fetch_details = AsyncMock(return_value=payload)
+        response = await async_client.post(
+            "/api/v1/fetch-details-with-cookies",
+            json={"url": "https://youtube.com/watch?v=abc", "format_id": "best", "cookies": _COOKIES},
+        )
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+async def test_fetch_details_with_cookies_returns_500_when_fetcher_raises(async_client):
+    with patch("api.routes.VideoFetcher") as MockFetcher:
+        MockFetcher.return_value.fetch_details = AsyncMock(side_effect=RuntimeError("boom"))
+        response = await async_client.post(
+            "/api/v1/fetch-details-with-cookies",
+            json={"url": "https://youtube.com/watch?v=abc", "format_id": "best", "cookies": _COOKIES},
+        )
+    assert response.status_code == 500
