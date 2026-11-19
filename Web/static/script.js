@@ -365,6 +365,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
               if (data.type === 'playlist') {
                 playlistTotalCount = data.video_count;
+                // Fixed list on purpose: asking YouTube for every video's formats took ~1s/video
+                // (5 min for 300 videos). The server picks "best at or below" the chosen height.
+                // TODO(task.md #19): tell the user when a video falls back to a lower height.
                 [2160, 1440, 1080, 720, 480, 360, 240, 144].forEach(h => availableResolutions.add(`${h}p`));
                 setDescription(`Playlist: "${data.title}" — ${data.video_count} videos`);
                 document.getElementById('videoThumbnail').src = data.thumbnail || '';
