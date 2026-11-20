@@ -22,6 +22,12 @@ Ran a ponytail over-engineering audit across the repo, then applied it. Nothing 
 - Tests: 159 pass (was ~179 before removing tests for deleted code; 2 added for `cookie_file`, 2 for `fetch-details-with-cookies`).
 - READMEs/SETUP now say the backend is started manually and never auto-shuts down (an MV3 extension cannot launch processes).
 
+### Follow-up round (same day)
+- Security: `SECRET_KEY` has no hard-coded fallback (random per process with `DEBUG=true`, startup error otherwise). `download_location` is resolved server-side from `/download-locations` or `default`, else 400. CORS can be pinned with `EXTENSION_IDS`.
+- Cleanup: removed the dead `DownloadManager`, `/queue`, `/task/*` and their models/tests (`/history` now reads the MongoDB download log, `/status` is a plain health check); `@app.on_event` replaced by a lifespan; `datetime.utcnow()` replaced everywhere; popup no longer calls the non-existent `/auth/verify-token` (it checks the JWT `exp` locally); deleted `create_icons.py`, `.qwen/`, `pending_work.md`. Extension tests: 109 pass, 0 warnings.
+
+- Last pass: deleted the unused `VideoFetcher.fetch_video_info` chain (and its tests); removed the popup's free-text "custom path" (only the `/download-locations` dropdown remains, choice saved in `chrome.storage`).
+
 ### Not done / left
 See `TODO.md`.
 

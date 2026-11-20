@@ -1,7 +1,7 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from core.config import settings
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
@@ -72,12 +72,12 @@ class DatabaseManager:
                 {"ip_address": ip_address},
                 {
                     "$set": {
-                        "last_seen": datetime.utcnow(),
+                        "last_seen": datetime.now(timezone.utc),
                         "user_agent": user_agent
                     },
                     "$inc": {"total_downloads": 1},
                     "$setOnInsert": {
-                        "first_seen": datetime.utcnow()
+                        "first_seen": datetime.now(timezone.utc)
                     }
                 },
                 upsert=True,
@@ -90,6 +90,30 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to update visitor stats: {e}")
     
+    async def get_recent_downloads(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Recent download log, shaped like the history entries the extension UI renders."""
+        try:
+            cursor = self.db.downloaded_videos.find().sort("download_timestamp", -1).limit(limit)
+            items = []
+            async for doc in cursor:
+                ts = doc.get("download_timestamp")
+                if ts and ts.tzinfo is None:  # Mongo hands back naive UTC
+                    ts = ts.replace(tzinfo=timezone.utc)
+                items.append({
+                    "id": str(doc["_id"]),
+                    "url": doc.get("video_url"),
+                    "video_title": doc.get("video_title"),
+                    "format_type": doc.get("format_type"),
+                    "status": "completed" if doc.get("success") else "failed",
+                    "error": doc.get("error_message"),
+                    "created_at": ts.isoformat() if ts else None,
+                    "completion_time": ts.isoformat() if ts else None,
+                })
+            return items
+        except Exception as e:
+            logger.error(f"Failed to read download history: {e}")
+            return []
+
 # Global database instance
 db_manager = DatabaseManager()
 

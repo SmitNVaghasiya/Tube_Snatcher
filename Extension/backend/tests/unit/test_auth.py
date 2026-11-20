@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytest
 from jose import jwt
 
@@ -65,7 +65,7 @@ def test_verify_token_returns_none_for_garbage():
 
 def test_verify_token_returns_none_for_wrong_secret():
     wrong_token = jwt.encode(
-        {"sub": "user", "exp": datetime.utcnow() + timedelta(hours=1)},
+        {"sub": "user", "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
         "wrong-secret-that-is-definitely-not-the-real-one",
         algorithm=settings.ALGORITHM,
     )

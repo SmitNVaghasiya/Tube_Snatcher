@@ -3,13 +3,17 @@
 Application configuration and settings
 """
 
+import logging
 import os
+import secrets
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class Settings:
     """Application settings and configuration"""
@@ -24,12 +28,10 @@ class Settings:
     DATABASE_NAME: str = os.getenv("DATABASE_NAME", "tubesnatcher")
     
     # Security settings
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-default-secret-key-change-in-production")
+    # Comma-separated browser-extension IDs allowed by CORS; empty = any extension origin
+    EXTENSION_IDS: list = [i.strip() for i in os.getenv("EXTENSION_IDS", "").split(",") if i.strip()]
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-    
-    # Download settings
-    MAX_CONCURRENT_DOWNLOADS: int = 2
     
     # Directory settings
     DEFAULT_DOWNLOAD_DIR: Path = Path(os.getenv("DOWNLOAD_DIR", "./downloads"))
@@ -47,19 +49,22 @@ class Settings:
     VIDEO_FORMAT_PREFERENCE = 'bestvideo+bestaudio/best'
     AUDIO_FORMAT_PREFERENCE = 'bestaudio/best'
     
-    # File size estimation (bytes per pixel for rough calculation)
-    FILESIZE_ESTIMATION_FACTOR = 0.1
-    
     # Cookie encryption key
     COOKIE_ENCRYPTION_KEY: str = os.getenv("COOKIE_ENCRYPTION_KEY")
     
     def __init__(self):
         """Initialize settings and create default directories"""
         self.DEFAULT_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        # No hard-coded fallback: a known default key would let anyone forge tokens.
+        self.SECRET_KEY = os.getenv("SECRET_KEY")
+        if not self.SECRET_KEY:
+            if not self.DEBUG:
+                raise RuntimeError("SECRET_KEY is not set. Set it in the environment (or .env) before starting the server.")
+            self.SECRET_KEY = secrets.token_hex(32)
+            logger.warning("SECRET_KEY not set: using a random key for this process (tokens die on restart).")
         # Generate encryption key if not provided
         if not self.COOKIE_ENCRYPTION_KEY:
             from cryptography.fernet import Fernet
-            import os
             key = Fernet.generate_key().decode()
             os.environ['COOKIE_ENCRYPTION_KEY'] = key
             self.COOKIE_ENCRYPTION_KEY = key

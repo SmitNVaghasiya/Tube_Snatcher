@@ -4,7 +4,6 @@ const CONFIG = {
     BACKEND_URL: 'http://localhost:2004',  // Update this to your deployed URL
     ENDPOINTS: {
         AUTH_TOKEN: '/api/v1/auth/get-token',
-        VERIFY_TOKEN: '/api/v1/auth/verify-token',
         FETCH_DETAILS: '/api/v1/fetch-details-with-cookies',
         DOWNLOAD: '/api/v1/download-with-cookies',
         DOWNLOAD_PLAYLIST: '/api/v1/download-playlist',
@@ -56,15 +55,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     const videoUrlInput = document.getElementById('videoUrlInput');
     const downloadUrlBtn = document.getElementById('downloadUrlBtn');
     
-    // Download location elements
-    const defaultLocation = document.getElementById('defaultLocation');
-    const customLocation = document.getElementById('customLocation');
-    const customPathInput = document.getElementById('customPathInput');
-    const customPath = document.getElementById('customPath');
-    const browseBtn = document.getElementById('browseBtn');
-
     let selectedFormat = null;
-    let selectedLocation = 'default';
     let selectedFormatType = 'mp4'; // 'mp4' or 'mp3'
     let selectedContentType = 'video'; // 'video' or 'playlist'
     let currentVideo = null;
@@ -204,14 +195,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Content type selector
         videoOnly.addEventListener('change', handleContentTypeChange);
         playlistAll.addEventListener('change', handleContentTypeChange);
-        
-        // Download location event listeners
-        defaultLocation.addEventListener('change', handleLocationChange);
-        customLocation.addEventListener('change', handleLocationChange);
-        browseBtn.addEventListener('click', handleBrowseClick);
-        
-        // Load saved location preference
-        await loadLocationPreference();
     }
     
     // Handle quick download (MP4 or MP3 with best quality)
@@ -251,7 +234,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 format_id: 'best', // Use 'best' for best quality
                 format_type: formatType,
                 cookies: cookies,
-                download_location: selectedLocation === 'custom' ? customPath.value.trim() : undefined
+                download_location: getDownloadLocation()
             };
 
             console.log('Sending download request to:', getApiUrl('DOWNLOAD'));
@@ -342,7 +325,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 format_id: 'best', // Use 'best' for best quality
                 format_type: formatType,
                 cookies: cookies,
-                download_location: selectedLocation === 'custom' ? customPath.value.trim() : undefined
+                download_location: getDownloadLocation()
             };
 
             console.log('Sending URL download request to:', getApiUrl('DOWNLOAD'));
@@ -496,8 +479,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         if (storedToken.authToken) {
             authToken = storedToken.authToken;
-            // Verify token is still valid
-            if (await verifyToken(authToken)) {
+            if (isTokenFresh(authToken)) {
                 return authToken;
             }
         }
@@ -530,17 +512,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 
-    // Verify if token is still valid
-    async function verifyToken(token) {
+    // The backend has no verify endpoint: read the JWT's own expiry instead (1 min margin)
+    function isTokenFresh(token) {
         try {
-            const response = await fetch(getApiUrl('VERIFY_TOKEN'), {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            
-            return response.ok;
+            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            return payload.exp * 1000 > Date.now() + 60000;
         } catch (error) {
             return false;
         }
@@ -577,54 +553,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 
-    // Handle download location changes
-    function handleLocationChange() {
-        if (defaultLocation.checked) {
-            selectedLocation = 'default';
-            customPathInput.style.display = 'none';
-        } else if (customLocation.checked) {
-            selectedLocation = 'custom';
-            customPathInput.style.display = 'block';
-            customPath.focus();
-        }
-        
-        // Save location preference
-        saveLocationPreference();
-    }
-
-    // Handle browse button click
-    function handleBrowseClick() {
-        // Note: Chrome extensions cannot directly open file picker
-        // This is a placeholder for future implementation
-        customPath.focus();
-        customPath.select();
-        
-        // Show helpful message
-        alert('Please enter the full path to your desired download folder.\n\nExample paths:\nWindows: C:\\Videos\\YouTube\nmacOS: /Users/username/Videos/YouTube\nLinux: /home/username/Videos/YouTube');
-    }
-
-    // Load saved location preference
-    async function loadLocationPreference() {
-        const result = await chrome.storage.local.get(['downloadLocation']);
-        if (result.downloadLocation) {
-            selectedLocation = result.downloadLocation.type;
-            if (selectedLocation === 'custom' && result.downloadLocation.path) {
-                customPath.value = result.downloadLocation.path;
-                customLocation.checked = true;
-                customPathInput.style.display = 'block';
-            } else {
-                defaultLocation.checked = true;
-            }
-        }
-    }
-
-    // Save location preference
-    async function saveLocationPreference() {
-        const locationData = {
-            type: selectedLocation,
-            path: selectedLocation === 'custom' ? customPath.value : null
-        };
-        await chrome.storage.local.set({ downloadLocation: locationData });
+    // Selected download location: the dropdown value is a path from /download-locations
+    // (the server only accepts "default" or one of those). undefined = server default.
+    function getDownloadLocation() {
+        const select = document.getElementById('locationSelector');
+        return select && select.value ? select.value : undefined;
     }
 
     // Extract cookies from browser for the current YouTube session
@@ -906,13 +839,6 @@ document.addEventListener('DOMContentLoaded', async function() {
             return;
         }
 
-        // Validate custom path if selected
-        if (selectedLocation === 'custom' && (!customPath.value || customPath.value.trim() === '')) {
-            showError('Please enter a valid download path');
-            customPath.focus();
-            return;
-        }
-
         try {
             downloadBtn.disabled = true;
             downloadBtn.innerHTML = `
@@ -951,7 +877,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             format_id: selectedFormat || 'best',
             format_type: selectedFormatType,
             cookies: cookies,
-            download_location: selectedLocation === 'custom' ? customPath.value.trim() : undefined
+            download_location: getDownloadLocation()
         };
 
         // Send download request to backend with authentication
@@ -994,8 +920,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         const formData = new FormData();
         formData.append('playlist_url', playlistUrl);
         formData.append('format_type', selectedFormatType);
-        if (selectedLocation !== 'default') {
-            formData.append('download_location', customPath.value.trim());
+        const location = getDownloadLocation();
+        if (location) {
+            formData.append('download_location', location);
         }
         // Add cookies to form data (in Netscape format)
         formData.append('cookies', cookies);
@@ -1110,6 +1037,16 @@ document.addEventListener('DOMContentLoaded', async function() {
             locationSelect.appendChild(option);
         });
         
+        // Remember the user's choice
+        chrome.storage.local.get(['downloadLocation']).then(r => {
+            if (r.downloadLocation && locations.some(l => l.path === r.downloadLocation)) {
+                locationSelect.value = r.downloadLocation;
+            }
+        });
+        locationSelect.addEventListener('change', () => {
+            chrome.storage.local.set({ downloadLocation: locationSelect.value });
+        });
+
         // Add to download location section
         const locationSection = document.getElementById('downloadLocation');
         if (locationSection) {

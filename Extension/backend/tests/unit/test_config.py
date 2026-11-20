@@ -72,10 +72,6 @@ def test_settings_algorithm_is_hs256():
     assert settings.ALGORITHM == "HS256"
 
 
-def test_settings_max_concurrent_downloads_is_positive():
-    assert settings.MAX_CONCURRENT_DOWNLOADS > 0
-
-
 def test_settings_default_download_dir_is_path():
     assert isinstance(settings.DEFAULT_DOWNLOAD_DIR, Path)
 
@@ -86,3 +82,33 @@ def test_settings_audio_format_preference_is_set():
 
 def test_settings_video_format_preference_is_set():
     assert settings.VIDEO_FORMAT_PREFERENCE
+
+
+# ---------------------------------------------------------------------------
+# SECRET_KEY handling
+# ---------------------------------------------------------------------------
+
+
+def test_secret_key_missing_raises_when_not_debug(monkeypatch):
+    from core.config import Settings
+
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setattr(Settings, "DEBUG", False)
+    with pytest.raises(RuntimeError, match="SECRET_KEY"):
+        Settings()
+
+
+def test_secret_key_missing_generates_random_key_in_debug(monkeypatch):
+    from core.config import Settings
+
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setattr(Settings, "DEBUG", True)
+    a, b = Settings().SECRET_KEY, Settings().SECRET_KEY
+    assert len(a) == 64 and a != b
+
+
+def test_secret_key_from_env_is_used(monkeypatch):
+    from core.config import Settings
+
+    monkeypatch.setenv("SECRET_KEY", "abc")
+    assert Settings().SECRET_KEY == "abc"

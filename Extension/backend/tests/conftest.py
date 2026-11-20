@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 from cryptography.fernet import Fernet
 import pytest
@@ -13,9 +14,13 @@ os.environ.setdefault("DOWNLOAD_DIR", "/tmp/ts_test_downloads")
 
 from app import app  # noqa: E402
 
-# Prevent startup/shutdown handlers from attempting real DB/timer connections.
-app.router.on_startup.clear()
-app.router.on_shutdown.clear()
+# Never connect to a real MongoDB in tests (httpx's ASGITransport skips lifespan anyway; this is a guard).
+@asynccontextmanager
+async def _no_lifespan(_app):
+    yield
+
+
+app.router.lifespan_context = _no_lifespan
 
 
 @pytest.fixture(scope="session")
@@ -27,37 +32,12 @@ def fernet_key() -> str:
 def mock_db_manager():
     db = MagicMock()
     db.log_download = AsyncMock()
+    db.get_recent_downloads = AsyncMock(return_value=[])
     return db
 
 
 @pytest.fixture
-def mock_download_manager():
-    from core.models import QueueStatus
-
-    manager = MagicMock()
-    manager.download_queue = []
-    manager.active_downloads = []
-    manager.completed_tasks = []
-    manager.add_to_queue = AsyncMock(return_value="task_12345")
-    manager.get_task_by_id = MagicMock(return_value=None)
-    manager.cancel_task = AsyncMock(return_value=True)
-    manager.get_download_history = AsyncMock(return_value=[])
-    manager.get_queue_status = AsyncMock(
-        return_value=QueueStatus(
-            total_queue_size=0,
-            active_downloads=0,
-            queued_downloads=[],
-            active_tasks=[],
-            server_uptime="0:00:00",
-        )
-    )
-    manager.get_current_time = MagicMock(return_value="2024-01-01T00:00:00")
-    return manager
-
-
-@pytest.fixture
-async def async_client(mock_download_manager, mock_db_manager):
-    app.state.download_manager = mock_download_manager
+async def async_client(mock_db_manager):
     with patch("api.routes.db_manager", mock_db_manager):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:

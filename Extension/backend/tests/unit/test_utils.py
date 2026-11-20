@@ -158,7 +158,7 @@ def test_cookie_file_writes_netscape_header_and_always_deletes():
 
     with pytest.raises(RuntimeError):
         with cookie_file(_VALID_COOKIE_LINE) as path:
-            content = open(path).read()
+            content = __import__("pathlib").Path(path).read_text()
             raise RuntimeError("boom")
     assert content.startswith("# Netscape HTTP Cookie File\n") and _VALID_COOKIE_LINE in content
     assert not os.path.exists(path)

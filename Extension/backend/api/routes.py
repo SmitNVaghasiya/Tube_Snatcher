@@ -8,7 +8,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from typing import Optional
 import logging
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from core.video_fetcher import VideoFetcher
 from core.models import DownloadResponse, DownloadWithCookiesRequest
@@ -48,24 +48,11 @@ async def get_auth_token(request: Request):
         "expires_in": access_token_expires.seconds
     }
 
-# Status and queue routes
+# Status route
 @router.get("/status")
-async def get_status(request: Request):
-    """Get server status and basic info"""
-    download_manager = request.app.state.download_manager
-    
-    return {
-        "status": "running",
-        "queue_size": len(download_manager.download_queue),
-        "active_downloads": len(download_manager.active_downloads),
-        "timestamp": download_manager.get_current_time()
-    }
-
-@router.get("/queue")
-async def get_queue_status(request: Request):
-    """Get detailed queue and active downloads status"""
-    download_manager = request.app.state.download_manager
-    return await download_manager.get_queue_status()
+async def get_status():
+    """Server health, used by the extension to detect the backend"""
+    return {"status": "running", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 # Enhanced routes for cookie-enhanced functionality with playlist and audio support
 @router.post("/fetch-details-with-cookies")
@@ -82,7 +69,7 @@ async def fetch_video_details_with_cookies(
         format_type: Preferred format (mp4/mp3)
     
     Returns:
-        VideoInfo or PlaylistInfo depending on URL type
+        dict: a video (type=video) or a playlist (type=playlist, with videos)
     """
     if not download_request.url.strip():
         raise HTTPException(status_code=400, detail="URL is required")
@@ -130,6 +117,8 @@ async def download_video_with_cookies(
     # Validate URL
     if not validate_youtube_url(download_request.url):
         raise HTTPException(status_code=400, detail="Invalid YouTube URL provided")
+
+    download_dir_resolved = _resolve_download_location(download_request.download_location)
     
     try:
         # Log the download attempt
@@ -137,7 +126,7 @@ async def download_video_with_cookies(
             "video_url": download_request.url,
             "ip_address": client_ip,
             "user_agent": user_agent,
-            "download_timestamp": datetime.utcnow(),
+            "download_timestamp": datetime.now(timezone.utc),
             "success": False,
             "format_type": download_request.format_type,
             "format_id": download_request.format_id
@@ -145,8 +134,7 @@ async def download_video_with_cookies(
         
         # Initialize video downloader with cookies
         downloader = VideoDownloader()
-        download_manager = request.app.state.download_manager
-        download_dir = settings.get_download_directory(download_request.download_location)
+        download_dir = download_dir_resolved
         
         # Download the video with cookies
         result = await downloader.download_video(
@@ -195,7 +183,7 @@ async def download_video_with_cookies(
             "video_url": download_request.url,
             "ip_address": client_ip,
             "user_agent": user_agent,
-            "download_timestamp": datetime.utcnow(),
+            "download_timestamp": datetime.now(timezone.utc),
             "success": False,
             "error_message": str(e),
             "format_type": download_request.format_type,
@@ -233,6 +221,8 @@ async def download_playlist_with_cookies(
     # Validate URL
     if not validate_youtube_url(playlist_url):
         raise HTTPException(status_code=400, detail="Invalid YouTube URL provided")
+
+    download_dir_resolved = _resolve_download_location(download_location)
     
     # For playlist downloads, we'll need to extract the cookies from the request body
     # We'll assume they're sent in a specific way for this endpoint
@@ -250,7 +240,7 @@ async def download_playlist_with_cookies(
         if not cookies.strip():
             raise HTTPException(status_code=400, detail="Cookies are required")
         
-        download_dir = settings.get_download_directory(download_location)
+        download_dir = download_dir_resolved
         playlist_title, video_count = await VideoDownloader().download_playlist(
             playlist_url, download_dir, format_type, cookies
         )
@@ -260,7 +250,7 @@ async def download_playlist_with_cookies(
             "video_title": f"Playlist: {playlist_title}",
             "ip_address": client_ip,
             "user_agent": user_agent,
-            "download_timestamp": datetime.utcnow(),
+            "download_timestamp": datetime.now(timezone.utc),
             "success": True,
             "format_type": format_type,
             "format_id": "playlist"
@@ -285,7 +275,7 @@ async def download_playlist_with_cookies(
             "video_title": "Playlist Download",
             "ip_address": client_ip,
             "user_agent": user_agent,
-            "download_timestamp": datetime.utcnow(),
+            "download_timestamp": datetime.now(timezone.utc),
             "success": False,
             "error_message": str(e),
             "format_type": format_type,
@@ -298,51 +288,18 @@ async def download_playlist_with_cookies(
             detail=f"Playlist download failed: {str(e)}"
         )
 
-@router.get("/task/{task_id}")
-async def get_task_status(request: Request, task_id: str):
-    """Get status of a specific download task"""
-    download_manager = request.app.state.download_manager
-    task = download_manager.get_task_by_id(task_id)
-    
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    return {
-        "task_id": task.id,
-        "status": task.status,
-        "progress": task.progress,
-        "filename": task.filename,
-        "error": task.error,
-        "created_at": task.created_at.isoformat(),
-        "start_time": task.start_time.isoformat() if task.start_time else None,
-        "completion_time": task.completion_time.isoformat() if task.completion_time else None
-    }
-
-@router.delete("/task/{task_id}")
-async def cancel_task(request: Request, task_id: str):
-    """Cancel a queued or active download task"""
-    download_manager = request.app.state.download_manager
-    success = await download_manager.cancel_task(task_id)
-    
-    if not success:
-        raise HTTPException(status_code=404, detail="Task not found or cannot be cancelled")
-    
-    return {"message": "Task cancelled successfully", "task_id": task_id}
-
 @router.get("/history")
-async def get_download_history(request: Request, limit: int = 50):
-    """Get download history"""
-    download_manager = request.app.state.download_manager
-    history = await download_manager.get_download_history(limit)
+async def get_download_history(limit: int = 50):
+    """Get download history (from the download log in MongoDB)"""
+    history = await db_manager.get_recent_downloads(limit)
     
     return {
         "history": history,
         "total_count": len(history)
     }
 
-@router.get("/download-locations")
-async def get_common_download_locations():
-    """Get common download locations for the frontend"""
+def _download_locations() -> list:
+    """Locations the server offers (and the only ones it will write to)"""
     home = Path.home()
     
     locations = [
@@ -383,4 +340,20 @@ async def get_common_download_locations():
         except Exception:
             continue
     
-    return {"locations": valid_locations}
+    return valid_locations
+
+@router.get("/download-locations")
+async def get_common_download_locations():
+    """Get common download locations for the frontend"""
+    return {"locations": _download_locations()}
+
+def _resolve_download_location(location: Optional[str]) -> Path:
+    """Map a client-supplied location to a server-side directory; arbitrary paths are rejected."""
+    if not location or location.strip() in ("", "default"):
+        return settings.DEFAULT_DOWNLOAD_DIR
+    wanted = location.strip()
+    for loc in _download_locations():
+        if wanted in (loc["name"], loc["path"]):
+            return Path(loc["path"])
+    raise HTTPException(status_code=400, detail="Unknown download location")
+

@@ -11,7 +11,7 @@ A powerful Chrome extension for downloading YouTube videos backed by a local Pyt
 ### 📥 **Advanced Download Capabilities**
 - **Format Selection**: Choose from 360p to 1440p quality options
 - **Smart Filtering**: Automatically filters suitable formats for your screen
-- **Queue Management**: Download multiple videos with background processing
+- **Playlists**: Download single videos or whole playlists
 - **Progress Tracking**: Real-time download progress monitoring
 - **Error Handling**: Comprehensive error handling with user-friendly messages
 
@@ -32,10 +32,10 @@ A powerful Chrome extension for downloading YouTube videos backed by a local Pyt
 ### **Backend (Python Server)**
 - **FastAPI**: Modern, fast web framework for API endpoints
 - **yt-dlp**: Latest YouTube downloader with format support
-- **Async Processing**: Non-blocking download queue management
+- **Async Processing**: yt-dlp work runs in thread executors
 
 ### **Security Features**
-- **CORS**: `allow_origin_regex` allows browser-extension origins, localhost and the Vercel/Render domains (any extension ID is accepted)
+- **CORS**: `allow_origin_regex` allows browser-extension origins, localhost and the Vercel/Render domains (any extension ID is accepted unless you set `EXTENSION_IDS` in `backend/.env` to pin yours)
 - **Input Validation**: Sanitized user inputs and URL validation
 - **Permission Management**: Minimal required permissions for security
 

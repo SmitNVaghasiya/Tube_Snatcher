@@ -293,46 +293,6 @@ body {
     font-family: 'Courier New', monospace;
 }
 
-.custom-path-input {
-    margin-top: 12px;
-    padding: 12px;
-    background: #f8f9fa;
-    border-radius: 8px;
-    border: 1px solid #e9ecef;
-}
-
-.custom-path-input input[type="text"] {
-    width: 100%;
-    padding: 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 13px;
-    margin-bottom: 8px;
-    font-family: 'Courier New', monospace;
-}
-
-.custom-path-input input[type="text"]:focus {
-    outline: none;
-    border-color: #2b2b2b;
-    box-shadow: 0 0 0 2px rgba(43, 43, 43, 0.1);
-}
-
-.browse-btn {
-    width: 100%;
-    padding: 8px 12px;
-    background: #2b2b2b;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.browse-btn:hover {
-    background: #404040;
-}
-
 .download-section {
     padding: 20px;
     border-bottom: 1px solid #eee;

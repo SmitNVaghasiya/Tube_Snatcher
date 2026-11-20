@@ -9,7 +9,7 @@ TubeSnatcher Backend is a FastAPI-based server application designed to work with
 - **Secure Cookie Handling**: Extracts and uses YouTube cookies for authenticated downloads
 - **JWT Authentication**: Token-based access control for API endpoints
 - **MongoDB Integration**: Tracks downloads and unique users for analytics
-- **Download Management**: Queue system with progress tracking
+- **Download Management**: Direct downloads via yt-dlp; history is read from the MongoDB download log
 - **Format Support**: MP4, MP3, and various quality options
 - **Playlist Support**: Full and single video playlist downloads
 
@@ -43,7 +43,8 @@ TubeSnatcher Backend is a FastAPI-based server application designed to work with
 - **Cryptography**: Cookie encryption
 
 ## Environment Variables
-- `SECRET_KEY`: JWT secret key (generate with `openssl rand -hex 32`)
+- `SECRET_KEY`: JWT secret key (generate with `openssl rand -hex 32`). Required unless `DEBUG=true`, where a random per-process key is used with a warning
+- `EXTENSION_IDS`: comma-separated extension IDs for CORS pinning (`chrome-extension://<id>` / `moz-extension://<id>`, plus localhost). Empty = any extension origin (warns when `DEBUG` is off)
 - `MONGODB_URI`: MongoDB connection string
 - `COOKIE_ENCRYPTION_KEY`: Fernet encryption key for cookies
 - `HOST`: Server host (default: 0.0.0.0)

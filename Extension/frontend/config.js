@@ -8,7 +8,6 @@ const CONFIG = {
     // API endpoints
     ENDPOINTS: {
         AUTH_TOKEN: '/api/v1/auth/get-token',
-        VERIFY_TOKEN: '/api/v1/auth/verify-token',
         FETCH_DETAILS: '/api/v1/fetch-details-with-cookies',
         DOWNLOAD: '/api/v1/download-with-cookies',
         LOCATIONS: '/api/v1/download-locations',

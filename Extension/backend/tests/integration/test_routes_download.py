@@ -2,59 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from core.models import DownloadTask, DownloadRequest, TaskStatus, VideoInfo, FormatInfo
 from core.video_downloader import DownloadResult
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/task/{task_id}
-# ---------------------------------------------------------------------------
-
-
-async def test_get_task_status_returns_404_for_unknown_id(async_client):
-    response = await async_client.get("/api/v1/task/nonexistent_task_id")
-    assert response.status_code == 404
-
-
-async def test_get_task_status_returns_200_for_known_task(async_client, mock_download_manager):
-    req = DownloadRequest(
-        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ", format_id="137"
-    )
-    task = DownloadTask(req)
-    mock_download_manager.get_task_by_id = MagicMock(return_value=task)
-
-    response = await async_client.get(f"/api/v1/task/{task.id}")
-    assert response.status_code == 200
-
-
-async def test_get_task_status_response_has_expected_fields(async_client, mock_download_manager):
-    req = DownloadRequest(
-        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ", format_id="137"
-    )
-    task = DownloadTask(req)
-    mock_download_manager.get_task_by_id = MagicMock(return_value=task)
-
-    response = await async_client.get(f"/api/v1/task/{task.id}")
-    data = response.json()
-    for key in ("task_id", "status", "progress"):
-        assert key in data, f"Missing key: {key}"
-
-
-# ---------------------------------------------------------------------------
-# DELETE /api/v1/task/{task_id}
-# ---------------------------------------------------------------------------
-
-
-async def test_cancel_task_returns_200_on_success(async_client, mock_download_manager):
-    mock_download_manager.cancel_task = AsyncMock(return_value=True)
-    response = await async_client.delete("/api/v1/task/task_12345")
-    assert response.status_code == 200
-
-
-async def test_cancel_task_returns_404_when_not_found(async_client, mock_download_manager):
-    mock_download_manager.cancel_task = AsyncMock(return_value=False)
-    response = await async_client.delete("/api/v1/task/task_missing")
-    assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -166,3 +114,47 @@ async def test_fetch_details_with_cookies_returns_500_when_fetcher_raises(async_
             json={"url": "https://youtube.com/watch?v=abc", "format_id": "best", "cookies": _COOKIES},
         )
     assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# download_location validation
+# ---------------------------------------------------------------------------
+
+_BODY = {
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "cookies": ".youtube.com\tTRUE\t/\tFALSE\t0\tSID\tvalue",
+    "format_id": "137",
+}
+
+
+async def test_download_with_cookies_rejects_arbitrary_download_location(async_client, mock_db_manager):
+    with patch("api.routes.VideoDownloader") as MockDownloader:
+        response = await async_client.post(
+            "/api/v1/download-with-cookies", json={**_BODY, "download_location": "C:/Windows/System32"}
+        )
+    assert response.status_code == 400
+    MockDownloader.return_value.download_video.assert_not_called()
+
+
+async def test_download_playlist_rejects_arbitrary_download_location(async_client):
+    response = await async_client.post(
+        "/api/v1/download-playlist",
+        data={
+            "playlist_url": "https://www.youtube.com/playlist?list=PL1",
+            "cookies": "x",
+            "download_location": "/etc",
+        },
+    )
+    assert response.status_code == 400
+
+
+async def test_download_with_cookies_resolves_listed_location_server_side(async_client):
+    listed = (await async_client.get("/api/v1/download-locations")).json()["locations"][0]
+    ok = DownloadResult(success=True, filename="f", video_title="T", thumbnail=None, file_size=None, error=None)
+    with patch("api.routes.VideoDownloader") as MockDownloader:
+        MockDownloader.return_value.download_video = AsyncMock(return_value=ok)
+        response = await async_client.post(
+            "/api/v1/download-with-cookies", json={**_BODY, "download_location": listed["name"]}
+        )
+    assert response.status_code == 200
+    assert str(MockDownloader.return_value.download_video.call_args.kwargs["directory"]) == listed["path"]
